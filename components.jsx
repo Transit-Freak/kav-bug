@@ -7,10 +7,13 @@ function fmt(n, d = 1) {
 const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "תקין" };
 
 // גרסת האפליקציה (SemVer: MAJOR.MINOR.PATCH) — מקור-אמת יחיד.
-const KAVBUG_VERSION = "1.0.1";
+const KAVBUG_VERSION = "1.1.0";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
+  { version: "1.1.0", date: "10.6.2026", items: [
+    "מנוע אבחון מקומי חכם: ההכרעה קוראת עכשיו את צורת המסלול עצמו (קואורדינטות) ולא רק יחס-מרחקים — מבדיל לולאה/בליטה ייחודית (\"אמיתי\") מהתפתלות של מבנה-כביש משותף (\"כיסוי לגיטימי\"). פועל בדפדפן, ללא שרת.",
+  ] },
   { version: "1.0.1", date: "10.6.2026", items: [
     "תיקון התראות-שווא: קו שמגיע למקטע משותף מכיוון/ענף-רשת שונה (תחנה-קודמת רחוקה ואין קו שחולק את ציר-הכניסה) מסומן כעת \"לא ניתן להשוואה\" — ולא כעיקוף.",
   ] },
@@ -729,6 +732,72 @@ function differentApproachDoubt(d) {
 function differentApproachReason(d) {
   return `הקו הנבדק מגיע לתחנה "${d.fromName}" מתחנה קודמת (${d.testedPrev || "—"}) שונה מזו של קו ${d.refNumber} (${d.refPrev || "—"}). במקטע קצר זו אינה השוואה נקייה — ייתכן שהסטייה נובעת ממסלול גישה שונה ולא מעיקוף ודאי. נדרשת בדיקה אנושית.`;
 }
+// ── מנוע גאומטרי מקומי — קריאת צורת המסלול עצמו ──────────────────────────────
+// מחשב מאפייני-צורה מפוליגון הקואורדינטות (קירוב מישורי, ק"מ ביחס לנקודה ראשונה):
+//   chord   — אורך הקו הישר בין קצות המקטע.
+//   maxLat  — הסטייה-הצידית המרבית של המסלול מהקו הישר (כמה הוא "בולט" הצידה).
+//   backKm  — הנסיגה-לאחור המרבית על ציר-הנסיעה אחרי התקדמות (לולאה/טיפה/הלוך-חזור).
+//   pathLen — אורך הפוליגון בפועל.
+function geoFeatures(pts) {
+  if (!pts || pts.length < 2) return null;
+  const lat0 = pts[0][0], lng0 = pts[0][1];
+  const kx = 111.32 * Math.cos(lat0 * Math.PI / 180), ky = 110.57;
+  const xy = pts.map((p) => [(p[1] - lng0) * kx, (p[0] - lat0) * ky]);
+  const A = xy[0], B = xy[xy.length - 1];
+  const ux = B[0] - A[0], uy = B[1] - A[1];
+  const uu = ux * ux + uy * uy;
+  const chord = Math.sqrt(uu);
+  let maxLat = 0, frontier = 0, backKm = 0, pathLen = 0;
+  for (let i = 0; i < xy.length; i++) {
+    if (i > 0) pathLen += Math.hypot(xy[i][0] - xy[i - 1][0], xy[i][1] - xy[i - 1][1]);
+    if (uu < 1e-9) continue;
+    const px = xy[i][0] - A[0], py = xy[i][1] - A[1];
+    const t = (px * ux + py * uy) / uu;
+    const lat = Math.hypot(px - t * ux, py - t * uy);
+    if (lat > maxLat) maxLat = lat;
+    if (t > frontier) frontier = t;
+    if (t > 0) { const drop = (frontier - t) * chord; if (drop > backKm) backKm = drop; }
+  }
+  return { chord, maxLat, backKm, pathLen, n: xy.length };
+}
+
+// מסווג גאומטרי: מבדיל "עיקוף אמיתי" (לולאה/בליטה-צידית ייחודית) מ"מבנה-כביש"
+// (הקו מתפתל בדיוק כמו קו-הייחוס — האורך העודף הוא הכביש, לא סטייה ייחודית).
+// מחזיר {verdict, reason} בביטחון גבוה בלבד, או null כדי להעביר את ההכרעה
+// לשערים הסקלריים כשהצורה אינה חד-משמעית. רץ *אחרי* שערי-הברזל (ציר-כניסה,
+// מוצא, הלוך-חזור-לפי-תחנות, תמרון-צומת) — כך שאינו יכול לעקוף אותם.
+function geoClassify(d) {
+  const tf = geoFeatures(d.lineGeometry);
+  if (!tf || tf.n < 3) return null;                 // אין מספיק נקודות-מסלול
+  const ratio = d.ratio || (d.refRoadKm > 0 ? d.lineRoadKm / d.refRoadKm : 0);
+  // (1) לולאה/טיפה ממשית — המסלול מתקדם ואז חוזר לאחור על צירו: עיקוף ודאי,
+  //     גם אם הבליטה הצידית קטנה (הלוך-חזור על אותו כביש).
+  const LOOP_BACK_KM = 0.20; // נסיגה ≥200 מ' = לולאה אמיתית, לא רעש-דגימה
+  if (tf.backKm >= LOOP_BACK_KM) {
+    return { verdict: "אמיתי", reason: `המסלול מתקדם ואז חוזר לאחור כ-${Math.round(tf.backKm * 1000)} מ' על צירו (לולאה/טיפה) — נסיעה כפולה על אותו כביש, עיקוף אמיתי.`, fallback: true };
+  }
+  // קו-הייחוס (לפי מספר) בעל גאומטריה לא-מנוונת — להשוואת צורה. נפילה: הקצר ביותר.
+  const baseNum = (n) => String(n).replace(/[^0-9].*$/, "");
+  let ref = null;
+  for (const r of (d.refLines || [])) {
+    const rf = geoFeatures(r.geometry);
+    if (!rf) continue;
+    if (baseNum(r.number) === baseNum(d.refNumber)) { ref = rf; break; }
+    if (!ref || rf.pathLen < ref.pathLen) ref = rf;
+  }
+  // (2) בליטה-צידית גדולה והרבה יותר מקו-הייחוס: סטייה ייחודית אמיתית.
+  if (tf.maxLat >= 0.30 && (!ref || tf.maxLat >= ref.maxLat * 1.8)) {
+    return { verdict: "אמיתי", reason: `הקו סוטה הצידה עד ${Math.round(tf.maxLat * 1000)} מ' מהקו הישר${ref && ref.n >= 3 ? ` (מול ~${Math.round(ref.maxLat * 1000)} מ' בקו ${d.refNumber})` : ""} — בליטה ייחודית, עיקוף אמיתי.`, fallback: true };
+  }
+  // (3) מבנה-כביש: לקו-הייחוס גאומטריה ממשית, והקו הנבדק אינו בולט הצידה יותר
+  //     ממנו ואין בו לולאה — האורך העודף נובע מהכביש עצמו, לא מסטייה ייחודית.
+  //     מוריד "אמיתי-שווא" כשהיחס מתון. ביחס גבוה (≥1.5) — לשערים הסקלריים.
+  if (ref && ref.n >= 3 && tf.backKm < 0.10 && tf.maxLat <= ref.maxLat * 1.25 + 0.03 && ratio < 1.5) {
+    return { verdict: "כיסוי לגיטימי", reason: `הקו הנבדק מתפתל באותה מידה כמו קו ${d.refNumber} (בליטה צידית ${Math.round(tf.maxLat * 1000)} מ' מול ${Math.round(ref.maxLat * 1000)} מ') — מבנה כביש משותף, לא סטייה ייחודית.`, fallback: true };
+  }
+  return null; // לא חד-משמעי — השערים הסקלריים יכריעו
+}
+
 // ── גיבוי דטרמיניסטי: אכיפת שערי הברזל לפי הסדר המחייב ──────────────────────
 // שער שמתקיים חותם את ההחלטה מיד. משמש גם כשה-API לא נגיש, וגם כברירת-מחדל
 // כשהמודל מחזיר תשובה לא תקינה. מחזיר {verdict, reason, fallback:true}.
@@ -775,6 +844,11 @@ function fallbackVerdict(d) {
   if (differentApproachDoubt(d)) {
     return { verdict: "ספק", reason: differentApproachReason(d), fallback: true };
   }
+  // שער 3.7 — מנוע גאומטרי מקומי: קורא את צורת המסלול עצמו (לולאה/בליטה מול
+  // מבנה-כביש). מכריע רק בביטחון גבוה; אחרת מחזיר null וההכרעה עוברת לשערים
+  // הסקלריים שמתחתיו. רץ אחרי כל שערי-הברזל, ולכן אינו יכול לעקוף אותם.
+  const geo = geoClassify(d);
+  if (geo) return geo;
   // שער 4 — סיווג עיקוף לפי קנה-מידה. ציר-הכניסה כבר אומת (שער 1.5), כעת מכריעים:
   const segKm = d.refRoadKm != null ? d.refRoadKm : (d.crowKm != null ? d.crowKm : (d.lineRoadKm || 0));
   // (4א) כלל אצבע — סטייה > 0.5 ק"מ במקטע אחד: מסלול עוקף ודאי, עיקוף אמיתי.
