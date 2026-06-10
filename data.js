@@ -899,6 +899,7 @@
   }
   const SELFLOOP_MAX_CROW = 1.0; // מקטע עירוני קצר בלבד — לא מקטע בין-עירוני (982: 86 ק"מ!)
   const SELFLOOP_MAX_KM = 0.6;   // בזבוז-לולאה סביר — לא הפרש-מסלול ענק (982: 27.6 ק"מ!)
+  const SELFLOOP_REF_STRAIGHT = 0.6; // קו-ייחוס עם winding < 0.6 = עובר ישר (לא מקיף)
   function detectSelfLoops(lines) {
     // אינדקס תחנה→קווים (עם _geom) — לבדיקת-ייחוס: האם קו אחר עושה אותו סיבוב.
     const baseNum = (n) => String(n).replace(/[^0-9].*$/, "");
@@ -926,18 +927,20 @@
         const segKm = drawnKm(L, i, i + 1);
         const km = segKm - crowKm;                       // בזבוז = אורך-הלולאה מעבר לקו האווירי
         if (!(km > NOISE_FLOOR_KM) || km > SELFLOOP_MAX_KM) continue; // בזבוז קטן מדי / גדול מדי
-        // בדיקת-ייחוס: אם קו אחר ששירת את אותן שתי תחנות עושה שם את אותו סיבוב,
-        // זו תכונת-כביש משותפת (כולם מקיפים את הכיכר) — לא תקלה ייחודית. מסמנים רק
-        // אם הקו הנבדק *לבד* מקיף בעוד אחרים עוברים ישר יותר.
-        let shared = false;
+        // בדיקת-ייחוס (חובה): מסמנים סיבוב מיותר *רק* אם קיים קו-ייחוס אחר ששירת
+        // את אותן שתי תחנות ועובר שם *ישר* (winding נמוך) — הוכחה מהשטח שהכביש
+        // פתוח והסיבוב מיותר. אם אין קו אחר, או שכל האחרים מקיפים אף הם — אין
+        // הוכחה / זו תכונת-כביש משותפת, ולא מסמנים. (כמו קו 70 מול קווים 2/16
+        // שעוברים ישר את אותן תחנות.)
+        let hasStraightRef = false;
         for (const O of (servedBy.get(from.id) || [])) {
           if (O === L || baseNum(O.number) === baseNum(L.number)) continue;
           const pair = adjacentStopPair(O, from.id, to.id, 2);
           if (!pair) continue;
           const oseg = O._geom[Math.min(pair.bi, pair.bj)];
-          if (oseg && maxWindowWinding(oseg) >= SELFLOOP_TURNS * 0.8) { shared = true; break; }
+          if (oseg && maxWindowWinding(oseg) < SELFLOOP_REF_STRAIGHT) { hasStraightRef = true; break; }
         }
-        if (shared) continue;
+        if (!hasStraightRef) continue;
         // סיבוב ≥1.15 שאף קו אחר לא עושה — תקלה ודאית. גובר על סיווג ההצלבה (שעשוי
         // לכנות אותו "כיסוי לגיטימי"). מסירים תקלה קיימת באותו מקטע ומחליפים.
         const ex = L.issues.findIndex((x) => x.segIdx && x.segIdx[0] === i);
