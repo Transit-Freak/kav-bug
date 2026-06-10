@@ -7,7 +7,7 @@ function fmt(n, d = 1) {
 const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "תקין" };
 
 // גרסת האפליקציה (SemVer: MAJOR.MINOR.PATCH) — מקור-אמת יחיד.
-const KAVBUG_VERSION = "1.0.0";
+const KAVBUG_VERSION = "1.0.1";
 
 // תיבות גאוגרפיות מוכנות לערים נפוצות [minLat, minLng, maxLat, maxLng]
 const CITY_PRESETS = [
@@ -630,6 +630,17 @@ function entryAxisDisqualified(d) {
   const OPPOSITE_DEG = 90;
   if (d.approachAngleDiff != null && d.approachAngleDiff > OPPOSITE_DEG) {
     return { bad: true, verdict: "לא ניתן להשוואה", reason: `לא ניתן להשוואה — כיווניות מנוגדת: קו ${d.refNumber} מגיע לתחנה המשותפת מצד מנוגד (הפרש וקטור הגעה ${Math.round(d.approachAngleDiff)}° > 90°). הקווים על צירי נסיעה הפוכים — אין בסיס להשוואת מרחקים.` };
+  }
+  // ── ציר-כניסה זר (Foreign Entry Axis) — פסילה קשיחה בכל קנה-מידה ──────────────
+  // אם אין אף קו שחולק את ציר-הכניסה של הקו הנבדק (approachIncompatible) *וגם*
+  // התחנה-הקודמת שלו רחוקה מאוד מזו של קו-הייחוס, שני הקווים נכנסים למקטע המשותף
+  // משני חלקים שונים לגמרי של הרשת (כמו קו 159 שיורד מהכביש המהיר מכיוון גבעת
+  // שאול אל מחלף הראל, מול קו 152 שכבר מקומי במחלף). אין ביניהם "מסלול סדרתי"
+  // משותף — ההפרש נובע ממסלול-גישה שונה, לא מעיקוף. שער זה גובר על הסטייה הגדולה
+  // ועל אורך-המקטע (חייב להיבדק *לפני* הקיצור-דרך של extra>0.5).
+  const FOREIGN_PREV_GAP_KM = 2.0; // פער עצום בין התחנות-הקודמות = ענפי-רשת שונים
+  if (d.approachIncompatible && d.prevApproachGapKm != null && d.prevApproachGapKm > FOREIGN_PREV_GAP_KM) {
+    return { bad: true, verdict: "לא ניתן להשוואה", reason: `לא ניתן להשוואה — ציר-כניסה זר: הקו הנבדק מגיע למקטע מכיוון אחר לגמרי. התחנה הקודמת שלו (${d.testedPrev || "—"}) רחוקה ${(d.prevApproachGapKm).toFixed(1)} ק"מ מזו של קו ${d.refNumber} (${d.refPrev || "—"}), ואין אף קו שחולק את ציר-הכניסה שלו. הקווים נכנסים מענפי-רשת שונים — ההפרש נובע ממסלול הגעה שונה, לא מעיקוף.` };
   }
   // כלל אצבע: סטייה גדולה = מסלול עוקף ממשי — בטל את דרישת התחנה-הקודמת.
   if (extra > 0.5) return { bad: false };
