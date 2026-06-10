@@ -7,10 +7,13 @@ function fmt(n, d = 1) {
 const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "תקין" };
 
 // גרסת האפליקציה (SemVer: MAJOR.MINOR.PATCH) — מקור-אמת יחיד.
-const KAVBUG_VERSION = "1.2.0";
+const KAVBUG_VERSION = "1.3.0";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
+  { version: "1.3.0", date: "10.6.2026", items: [
+    "גלאי \"סיבוב מיותר\" חדש: מזהה קווים שמקיפים כיכר (≥1.15 סיבובים) באמצע המסלול — תקלה שהגלאי הקודם פספס. מבדיל סיבוב-מיותר מתמרון-היפוך לגיטימי בקצה הקו ומ\"זרוע\" שמשרתת תחנה.",
+  ] },
   { version: "1.2.0", date: "10.6.2026", items: [
     "כל עיר בארץ: אפשר להקליד שם של כל עיר בחלון ההעלאה — המערכת מאתרת את גבולותיה אוטומטית (OpenStreetMap). נשלח רק שם-העיר; קובץ ה-GTFS נשאר במכשיר.",
   ] },
@@ -857,6 +860,11 @@ function geoClassify(d) {
 // שער שמתקיים חותם את ההחלטה מיד. משמש גם כשה-API לא נגיש, וגם כברירת-מחדל
 // כשהמודל מחזיר תשובה לא תקינה. מחזיר {verdict, reason, fallback:true}.
 function fallbackVerdict(d) {
+  // לולאה-עצמית (סיבוב מיותר): גאומטריה ודאית — הקו מקיף ≥1.15 סיבובים בכיכר.
+  // אין קו-ייחוס ואין מה להשוות; ההכרעה "אמיתי" מיידית (לא לפול לשער "אין ייחוס").
+  if (d.kind === "selfloop") {
+    return { verdict: "אמיתי", reason: `הקו מקיף ~${d.turns} סיבובים (לולאה סגורה — הקפת כיכר/טיפה) בין "${d.fromName}" ל-"${d.toName}" ואז ממשיך — סיבוב מיותר, עיקוף אמיתי.`, fallback: true };
+  }
   const extra = d.excessKm != null ? d.excessKm : ((d.lineRoadKm || 0) - (d.refRoadKm || 0));
   const ratio = d.ratio || (d.refRoadKm > 0 ? d.lineRoadKm / d.refRoadKm : 0);
   const NOISE_FLOOR_KM = 0.06; // 60 מ' — מתחת לזה: רעש דגימה, לא עיקוף
@@ -936,6 +944,8 @@ function fallbackVerdict(d) {
 // מריץ בוררות אחת. חסין-קריסות: כל שגיאה/תשובה לא תקינה → גיבוי 4 השערים.
 // לעולם אינו זורק — תמיד מחזיר {verdict, reason[, fallback]}.
 async function runAIVerdict(d) {
+  // לולאה-עצמית (סיבוב מיותר) — הכרעה גאומטרית ודאית, ללא צורך ב-AI.
+  if (d.kind === "selfloop") return fallbackVerdict(d);
   // פסילה קשיחה לפי ציר-כניסה — מוכרעת דטרמיניסטית *לפני* פניית ה-AI, כך
   // שהמודל לעולם אינו יכול לעקוף אותה ולסווג "עיקוף" על קווים מצירי-מוצא שונים.
   const eax = entryAxisDisqualified(d);

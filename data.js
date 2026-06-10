@@ -862,6 +862,79 @@
     return summarize(city);
   }
 
+  // ===========================================================================
+  // גלאי לולאה-עצמית — "סיבוב מיותר" (הקפת כיכר / טיפה)
+  // ---------------------------------------------------------------------------
+  // סורק כל מקטע _geom וסופר כמה פעמים *כיוון-הנסיעה* הסתובב בתוך חלון קצר. הקפת
+  // כיכר מלאה = ~1 סיבוב (360°); סיבוב מיותר/כפול = ≥1.15. תמרון-מעבר רגיל או
+  // עיקול-כביש = פחות. כך מבדילים "סיבוב מיותר" אמיתי (קווים 67/2/6) מ"זרוע"
+  // לגיטימית או מעבר-כיכר רגיל (≤1 סיבוב). עובד על ה-_geom הגולמי — חסין לארטיפקט
+  // ההצמדה של הגלאי-המוצלב (465/469): מודד את צורת הכביש עצמה.
+  // ===========================================================================
+  const SELFLOOP_TURNS = 1.15;   // ≥1.15 סיבובים בחלון קצר = סיבוב מיותר
+  const SELFLOOP_WIN_KM = 0.25;  // חלון מרבי (250 מ') — לולאה צמודה, לא עיקול ארוך
+  function maxWindowWinding(pts) {
+    if (!pts || pts.length < 8) return 0;
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++)
+      cum[i] = cum[i - 1] + haversine({ lat: pts[i - 1][0], lng: pts[i - 1][1] }, { lat: pts[i][0], lng: pts[i][1] });
+    const brg = (a, b) => Math.atan2(b[1] - a[1], b[0] - a[0]);
+    const cturn = [0];
+    let prev = null;
+    for (let i = 1; i < pts.length; i++) {
+      const b = brg(pts[i - 1], pts[i]);
+      let t = 0;
+      if (prev != null) { let d = b - prev; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; t = d; }
+      cturn.push(cturn[i - 1] + t);
+      prev = b;
+    }
+    let best = 0;
+    for (let i = 0; i < pts.length; i++)
+      for (let j = i + 1; j < pts.length; j++) {
+        if (cum[j] - cum[i] > SELFLOOP_WIN_KM) break;
+        const w = Math.abs(cturn[j] - cturn[i]);
+        if (w > best) best = w;
+      }
+    return best / (2 * Math.PI);
+  }
+  function detectSelfLoops(lines) {
+    for (const L of lines) {
+      if (!L._geom) continue;
+      const last = L._geom.length - 1;
+      let added = false;
+      for (let i = 0; i < L._geom.length; i++) {
+        if (i === 0 || i === last) continue;             // מקטע-קצה = תמרון-היפוך בטרמינל, לא תקלה
+        const seg = L._geom[i];
+        if (!seg || seg.length < 8) continue;
+        const turns = maxWindowWinding(seg);
+        if (turns < SELFLOOP_TURNS) continue;
+        const from = L.stops[i], to = L.stops[i + 1];
+        if (!from || !to) continue;
+        const segKm = drawnKm(L, i, i + 1);
+        const crowKm = haversine(from, to);
+        const km = segKm - crowKm;                       // בזבוז = אורך-הלולאה מעבר לקו האווירי
+        if (!(km > NOISE_FLOOR_KM)) continue;
+        // סיבוב ≥1.15 הוא תקלה ודאית — גובר על סיווג ההצלבה (שעשוי לכנות אותו
+        // "כיסוי לגיטימי"). מסירים תקלה קיימת באותו מקטע ומחליפים ב-selfloop.
+        const ex = L.issues.findIndex((x) => x.segIdx && x.segIdx[0] === i);
+        if (ex >= 0) L.issues.splice(ex, 1);
+        if (L.segments[i]) L.segments[i].flags.detour = true;
+        L.issues.push({
+          type: "selfloop", km, from, to, segIdx: [i], refKm: crowKm, longKm: segKm,
+          severity: sevDetour(km),
+          diag: {
+            kind: "selfloop", lineNumber: L.number, lineName: L.name,
+            fromName: from.name, toName: to.name,
+            lineRoadKm: segKm, refRoadKm: crowKm, refNumber: null,
+            excessKm: km, crowKm, turns: +turns.toFixed(2), stopsBetween: 0,
+          },
+        });
+        added = true;
+      }
+      if (added) finalizeLine(L);
+    }
+  }
+
   // לאחר הצמדה-לכביש (כשגאומטריה נשמרה על L._geom) — מדידה מדויקת לפי כביש.
   function applyRoadDistances(city) {
     if (!city) return city;
@@ -877,6 +950,7 @@
       }
     }
     detectCrossRef(city.lines); // גלאי מאוחד — הצלבה בין קווים (יחסי, ללא ספים אבסולוטיים)
+    detectSelfLoops(city.lines); // גלאי לולאה-עצמית — סיבוב מיותר בכיכר (משלים, על ה-_geom)
     return summarize(city);
   }
 
