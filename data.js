@@ -610,6 +610,13 @@
             referenceSequence: { from: f.refBi, to: f.refBj, gap: Math.abs(f.refBj - f.refBi),
               fromName: f.ref.stops[f.refBi] && f.ref.stops[f.refBi].name,
               toName: f.ref.stops[f.refBj] && f.ref.stops[f.refBj].name },
+            // האם קו-הייחוס נמצא ב*תחנת-קצה* שלו במקטע הזה (מתחיל/מסתיים בו): אם
+            // המופע ב-refBi/refBj הוא התחנה הראשונה (0) או האחרונה ברצף הנסיעה של
+            // קו-הייחוס — הוא יוצא/מסיים שם, ואינו "מסדרון מעבר" תקף להשוואה. קו
+            // שמתחיל בתחנה עושה קפיצה ישירה קצרה, בעוד הקו הנבדק עשוי לבצע לולאת-
+            // שירות לגיטימית באמצע מסלולו (כמו קו 174 מול קו 171 שמוצאו שם).
+            refIsTerminus: (Math.min(f.refBi, f.refBj) === 0) ||
+              (Math.max(f.refBi, f.refBj) === f.ref.stops.length - 1),
             // תחנות-הסמך (קודמת/באה) של שני הקווים — כדי שה-AI יזהה אם הקו
             // הנבדק מגיע למקטע מ*כיוון אחר* מקו-הייחוס (תמרון גישה לצומת/כיכר).
             testedPrev: p - 1 >= 0 ? L.stops[p - 1].name : null,
