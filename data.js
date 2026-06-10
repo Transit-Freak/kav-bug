@@ -897,7 +897,18 @@
       }
     return best / (2 * Math.PI);
   }
+  const SELFLOOP_MAX_CROW = 1.0; // מקטע עירוני קצר בלבד — לא מקטע בין-עירוני (982: 86 ק"מ!)
+  const SELFLOOP_MAX_KM = 0.6;   // בזבוז-לולאה סביר — לא הפרש-מסלול ענק (982: 27.6 ק"מ!)
   function detectSelfLoops(lines) {
+    // אינדקס תחנה→קווים (עם _geom) — לבדיקת-ייחוס: האם קו אחר עושה אותו סיבוב.
+    const baseNum = (n) => String(n).replace(/[^0-9].*$/, "");
+    const servedBy = new Map();
+    for (const O of lines) {
+      if (!O._geom) continue;
+      for (const s of O.stops) {
+        let a = servedBy.get(s.id); if (!a) { a = []; servedBy.set(s.id, a); } a.push(O);
+      }
+    }
     for (const L of lines) {
       if (!L._geom) continue;
       const last = L._geom.length - 1;
@@ -910,12 +921,25 @@
         if (turns < SELFLOOP_TURNS) continue;
         const from = L.stops[i], to = L.stops[i + 1];
         if (!from || !to) continue;
-        const segKm = drawnKm(L, i, i + 1);
         const crowKm = haversine(from, to);
+        if (crowKm > SELFLOOP_MAX_CROW) continue;        // מקטע ארוך (בין-עירוני) — לא לולאת-כיכר
+        const segKm = drawnKm(L, i, i + 1);
         const km = segKm - crowKm;                       // בזבוז = אורך-הלולאה מעבר לקו האווירי
-        if (!(km > NOISE_FLOOR_KM)) continue;
-        // סיבוב ≥1.15 הוא תקלה ודאית — גובר על סיווג ההצלבה (שעשוי לכנות אותו
-        // "כיסוי לגיטימי"). מסירים תקלה קיימת באותו מקטע ומחליפים ב-selfloop.
+        if (!(km > NOISE_FLOOR_KM) || km > SELFLOOP_MAX_KM) continue; // בזבוז קטן מדי / גדול מדי
+        // בדיקת-ייחוס: אם קו אחר ששירת את אותן שתי תחנות עושה שם את אותו סיבוב,
+        // זו תכונת-כביש משותפת (כולם מקיפים את הכיכר) — לא תקלה ייחודית. מסמנים רק
+        // אם הקו הנבדק *לבד* מקיף בעוד אחרים עוברים ישר יותר.
+        let shared = false;
+        for (const O of (servedBy.get(from.id) || [])) {
+          if (O === L || baseNum(O.number) === baseNum(L.number)) continue;
+          const pair = adjacentStopPair(O, from.id, to.id, 2);
+          if (!pair) continue;
+          const oseg = O._geom[Math.min(pair.bi, pair.bj)];
+          if (oseg && maxWindowWinding(oseg) >= SELFLOOP_TURNS * 0.8) { shared = true; break; }
+        }
+        if (shared) continue;
+        // סיבוב ≥1.15 שאף קו אחר לא עושה — תקלה ודאית. גובר על סיווג ההצלבה (שעשוי
+        // לכנות אותו "כיסוי לגיטימי"). מסירים תקלה קיימת באותו מקטע ומחליפים.
         const ex = L.issues.findIndex((x) => x.segIdx && x.segIdx[0] === i);
         if (ex >= 0) L.issues.splice(ex, 1);
         if (L.segments[i]) L.segments[i].flags.detour = true;
