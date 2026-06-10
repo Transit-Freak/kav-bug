@@ -203,10 +203,12 @@ function KavBug() {
           setCityName(m.cityName);
           setDataVersion((v) => v + 1);
         };
-        if (flaggedN > 0 && window.aiAvailable && window.aiAvailable()) {
-          setJob({ status: "running", pct: 0, phase: "בדיקת AI לתקלות (0/" + flaggedN + ")" });
+        if (flaggedN > 0) {
+          const aiOn = !!(window.aiAvailable && window.aiAvailable());
+          const ph = (n) => (aiOn ? "בדיקת AI לתקלות" : "בדיקת תקלות") + " (" + n + "/" + flaggedN + ")";
+          setJob({ status: "running", pct: 0, phase: ph(0) });
           runAIReview(analyzed, runKey, (done, total) => {
-            setJob({ status: "running", pct: total ? done / total : 1, phase: "בדיקת AI לתקלות (" + done + "/" + total + ")" });
+            setJob({ status: "running", pct: total ? done / total : 1, phase: ph(done) });
           }).then(finish);
         } else {
           finish();
@@ -242,7 +244,10 @@ function KavBug() {
     if (reviewCancelRef.current) reviewCancelRef.current.cancelled = true;
     const token = { cancelled: false };
     reviewCancelRef.current = token;
-    if (!flagged.length || !(window.aiAvailable && window.aiAvailable())) {
+    // תמיד מחשבים הכרעות — גם בלי AI: runAIVerdict נופל ל-fallbackVerdict
+    // הדטרמיניסטי. בלי זה, באתר ללא proxy אין verdicts → סינון "לא ניתן להשוואה"
+    // לא פועל וקווים שהמנוע פסל (כיוון מנוגד וכו') מוצגים בטעות כתקלות.
+    if (!flagged.length) {
       setAiReview({ verdicts: {}, total: 0, done: 0, active: false });
       return Promise.resolve({});
     }
