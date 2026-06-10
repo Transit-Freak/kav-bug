@@ -108,8 +108,23 @@ html, body {
   display: inline-block; vertical-align: middle; margin-inline-start: 4px;
   font-family: "Spline Sans Mono", monospace; font-size: 10px; font-weight: 600;
   letter-spacing: 0.04em; color: var(--ink-faint, #8a8f98);
-  transform: translateY(-1px);
+  transform: translateY(-1px); cursor: pointer; user-select: none;
+  border-bottom: 1px dotted transparent; transition: color .15s, border-color .15s;
 }
+.brand h1 .ver:hover { color: var(--detour, #ef8a17); border-bottom-color: currentColor; }
+.brand h1 .ver:focus-visible { outline: 2px solid var(--detour, #ef8a17); outline-offset: 2px; border-radius: 3px; }
+
+/* חלון "מה חדש" */
+.changelog { display: flex; flex-direction: column; gap: 16px; margin: 4px 0 2px; }
+.cl-rel { }
+.cl-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.cl-ver {
+  font-family: "Spline Sans Mono", monospace; font-size: 13px; font-weight: 700;
+  color: var(--detour, #ef8a17);
+}
+.cl-date { font-size: 11px; color: var(--ink-faint, #8a8f98); }
+.changelog ul { margin: 0; padding-inline-start: 18px; display: flex; flex-direction: column; gap: 5px; }
+.changelog li { font-size: 13px; line-height: 1.5; color: var(--ink, #2b2b2b); }
 .brand .tag {
   font-size: 11.5px; color: var(--ink-faint); margin: 0;
   font-weight: 600;

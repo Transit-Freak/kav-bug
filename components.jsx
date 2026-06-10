@@ -9,6 +9,18 @@ const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "
 // גרסת האפליקציה (SemVer: MAJOR.MINOR.PATCH) — מקור-אמת יחיד.
 const KAVBUG_VERSION = "1.0.1";
 
+// יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
+const CHANGELOG = [
+  { version: "1.0.1", date: "10.6.2026", items: [
+    "תיקון התראות-שווא: קו שמגיע למקטע משותף מכיוון/ענף-רשת שונה (תחנה-קודמת רחוקה ואין קו שחולק את ציר-הכניסה) מסומן כעת \"לא ניתן להשוואה\" — ולא כעיקוף.",
+  ] },
+  { version: "1.0.0", date: "10.6.2026", items: [
+    "השקה ראשונה — איתור עיקופים ופערים בקווי תחבורה ציבורית.",
+    "העלאת קובץ GTFS של משרד התחבורה ועיבוד מקומי בדפדפן בלבד.",
+    "אימות תקלות באמצעות AI (🤖 ניתוח AI) עם נפילה ל\"⚡ אבחון מהיר\" דטרמיניסטי.",
+  ] },
+];
+
 // תיבות גאוגרפיות מוכנות לערים נפוצות [minLat, minLng, maxLat, maxLng]
 const CITY_PRESETS = [
   { name: "באר שבע", bbox: [31.18, 34.74, 31.31, 34.86] },
@@ -122,6 +134,7 @@ function UploadModal({ open, onClose, onProcess, job }) {
 
 function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onReport }) {
   const [open, setOpen] = React.useState(false);
+  const [whatsNew, setWhatsNew] = React.useState(false);
   const ref = React.useRef(null);
   React.useEffect(() => {
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -142,7 +155,11 @@ function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onRepo
           </svg>
         </div>
         <div>
-          <h1>קו באג <span className="beta">בטא</span> <span className="ver">v{KAVBUG_VERSION}</span></h1>
+          <h1>קו באג <span className="beta">בטא</span> <span
+            className="ver" role="button" tabIndex={0} title="מה חדש בגרסה זו"
+            onClick={() => setWhatsNew(true)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setWhatsNew(true); } }}
+          >v{KAVBUG_VERSION}</span></h1>
           <p className="tag">איתור קטעים מיותרים בקווי תחבורה · כלי בבדיקה — אמתו כל התראה על המפה</p>
         </div>
       </div>
@@ -181,7 +198,39 @@ function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onRepo
           </div>
         )}
       </div>
+      <WhatsNewModal open={whatsNew} onClose={() => setWhatsNew(false)} />
     </header>
+  );
+}
+
+// חלון "מה חדש" — נפתח בלחיצה על מספר הגרסה; מציג את יומן השינויים (CHANGELOG).
+function WhatsNewModal({ open, onClose }) {
+  if (!open) return null;
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal info-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>מה חדש</h2>
+          <button className="x" onClick={onClose}>×</button>
+        </div>
+        <div className="changelog">
+          {CHANGELOG.map((rel) => (
+            <div className="cl-rel" key={rel.version}>
+              <div className="cl-head">
+                <span className="cl-ver">v{rel.version}</span>
+                {rel.date && <span className="cl-date">{rel.date}</span>}
+              </div>
+              <ul>
+                {rel.items.map((it, i) => <li key={i}>{it}</li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <p className="modal-credit">
+          נוצר על ידי <b>שלמה הרטמן</b> בעזרת קלוד · <a href="mailto:shlomihartman@gmail.com">shlomihartman@gmail.com</a>
+        </p>
+      </div>
+    </div>
   );
 }
 
