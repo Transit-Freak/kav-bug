@@ -183,13 +183,17 @@ onmessage = async (e) => {
       }) },
     }, (p) => prog("מקשר קווים", p));
 
-    // ---- בניית קווים: נציג אחד עם הכי הרבה תחנות-בעיר לכל route ----
+    // ---- בניית קווים: נציג אחד לכל route ----
+    // עדיפות ראשונה: נציג שיש לו shape (אחרת אין מסלול לצייר/לנתח — לא במצב
+    // הדיווח ולא בגלאי). בין נציגים שווי-shape: הכי הרבה תחנות-בעיר (hits).
     const bestPerRoute = new Map();
     for (const entry of bySig.values()) {
       const rid = tripRoute.get(entry.trip);
       if (!rid) continue;
       const cur = bestPerRoute.get(rid);
-      if (!cur || entry.hits > cur.hits) bestPerRoute.set(rid, entry);
+      if (!cur) { bestPerRoute.set(rid, entry); continue; }
+      const eS = tripShape.has(entry.trip) ? 1 : 0, cS = tripShape.has(cur.trip) ? 1 : 0;
+      if (eS > cS || (eS === cS && entry.hits > cur.hits)) bestPerRoute.set(rid, entry);
     }
 
     // ---- מעבר 4: shapes.txt — המסלול המדויק (רק ל-shape_id של הנציגים) ----
