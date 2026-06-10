@@ -6,6 +6,9 @@ function fmt(n, d = 1) {
 
 const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "תקין" };
 
+// גרסת האפליקציה (SemVer: MAJOR.MINOR.PATCH) — מקור-אמת יחיד.
+const KAVBUG_VERSION = "1.0.0";
+
 // תיבות גאוגרפיות מוכנות לערים נפוצות [minLat, minLng, maxLat, maxLng]
 const CITY_PRESETS = [
   { name: "באר שבע", bbox: [31.18, 34.74, 31.31, 34.86] },
@@ -139,7 +142,7 @@ function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onRepo
           </svg>
         </div>
         <div>
-          <h1>קו באג <span className="beta">בטא</span></h1>
+          <h1>קו באג <span className="beta">בטא</span> <span className="ver">v{KAVBUG_VERSION}</span></h1>
           <p className="tag">איתור קטעים מיותרים בקווי תחבורה · כלי בבדיקה — אמתו כל התראה על המפה</p>
         </div>
       </div>
@@ -1218,4 +1221,4 @@ function Panel({ city, activeIdx, setActiveIdx, aiReview }) {
   );
 }
 
-Object.assign(window, { TopBar, Panel, ReportPanel, Stats, ProblemCard, UploadModal, InfoModal, CITY_PRESETS, fmt, SEV_LABEL, runAIVerdict, buildVerdictPrompt, dirLabel, aiComplete, aiAvailable, fallbackVerdict, stripArabic });
+Object.assign(window, { TopBar, Panel, ReportPanel, Stats, ProblemCard, UploadModal, InfoModal, CITY_PRESETS, fmt, SEV_LABEL, KAVBUG_VERSION, runAIVerdict, buildVerdictPrompt, dirLabel, aiComplete, aiAvailable, fallbackVerdict, stripArabic });
