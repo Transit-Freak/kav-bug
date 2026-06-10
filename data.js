@@ -937,7 +937,12 @@
           if (O === L || baseNum(O.number) === baseNum(L.number)) continue;
           const pair = adjacentStopPair(O, from.id, to.id, 2);
           if (!pair) continue;
-          const refKm = drawnKm(O, Math.min(pair.bi, pair.bj), Math.max(pair.bi, pair.bj));
+          const lo = Math.min(pair.bi, pair.bj), hi = Math.max(pair.bi, pair.bj);
+          // קו-ייחוס שמתחיל/מסיים את מסלולו באחת התחנות אינו מסדרון-מעבר תקף:
+          // הוא עושה משם קפיצה קצרה למסוף, לא חוצה את הקטע. (קו 50 שמסיים שם מול
+          // קו 14א.) פוסלים אותו כקו-ייחוס.
+          if (lo === 0 || hi === O.stops.length - 1) continue;
+          const refKm = drawnKm(O, lo, hi);
           if (refKm > 0 && refKm < shortestRefKm) { shortestRefKm = refKm; refLineNum = O.number; }
         }
         if (!(shortestRefKm < Infinity) || segKm / shortestRefKm < SELFLOOP_REF_RATIO) continue;
