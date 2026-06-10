@@ -7,7 +7,7 @@ function fmt(n, d = 1) {
 const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "תקין" };
 
 // גרסת האפליקציה (SemVer: MAJOR.MINOR.PATCH) — מקור-אמת יחיד.
-const KAVBUG_VERSION = "1.0.0";
+const KAVBUG_VERSION = "1.0.1";
 
 // תיבות גאוגרפיות מוכנות לערים נפוצות [minLat, minLng, maxLat, maxLng]
 const CITY_PRESETS = [
