@@ -899,7 +899,7 @@
   }
   const SELFLOOP_MAX_CROW = 1.0; // מקטע עירוני קצר בלבד — לא מקטע בין-עירוני (982: 86 ק"מ!)
   const SELFLOOP_MAX_KM = 0.6;   // בזבוז-לולאה סביר — לא הפרש-מסלול ענק (982: 27.6 ק"מ!)
-  const SELFLOOP_REF_STRAIGHT = 0.6; // קו-ייחוס עם winding < 0.6 = עובר ישר (לא מקיף)
+  const SELFLOOP_REF_RATIO = 1.2; // הקו הנבדק נוסע ≥1.2× מקו-הייחוס הקצר ביותר
   function detectSelfLoops(lines) {
     // אינדקס תחנה→קווים (עם _geom) — לבדיקת-ייחוס: האם קו אחר עושה אותו סיבוב.
     const baseNum = (n) => String(n).replace(/[^0-9].*$/, "");
@@ -927,33 +927,34 @@
         const segKm = drawnKm(L, i, i + 1);
         const km = segKm - crowKm;                       // בזבוז = אורך-הלולאה מעבר לקו האווירי
         if (!(km > NOISE_FLOOR_KM) || km > SELFLOOP_MAX_KM) continue; // בזבוז קטן מדי / גדול מדי
-        // בדיקת-ייחוס (חובה): מסמנים סיבוב מיותר *רק* אם קיים קו-ייחוס אחר ששירת
-        // את אותן שתי תחנות ועובר שם *ישר* (winding נמוך) — הוכחה מהשטח שהכביש
-        // פתוח והסיבוב מיותר. אם אין קו אחר, או שכל האחרים מקיפים אף הם — אין
-        // הוכחה / זו תכונת-כביש משותפת, ולא מסמנים. (כמו קו 70 מול קווים 2/16
-        // שעוברים ישר את אותן תחנות.)
-        let hasStraightRef = false;
+        // בדיקת-ייחוס (חובה — לב הכלל): מסמנים סיבוב מיותר *רק* אם קיים קו-ייחוס
+        // אחר ששירת את אותן שתי תחנות ונוסע ביניהן דרך *קצרה יותר* (יחס ≥1.2).
+        // קו-הייחוס הוא ההוכחה מהשטח שאפשר לעבור את הקטע קצר — והקו הנבדק מקיף
+        // לחינם. כיכר *לבדה* (בלי קו אחר שעובר אותה קצר) אינה תקלה. (קו 70: 372 מ',
+        // מול קווים 2/16 שעוברים את אותן תחנות ב-~290 מ' — יחס 1.27 → תקלה.)
+        let shortestRefKm = Infinity, refLineNum = null;
         for (const O of (servedBy.get(from.id) || [])) {
           if (O === L || baseNum(O.number) === baseNum(L.number)) continue;
           const pair = adjacentStopPair(O, from.id, to.id, 2);
           if (!pair) continue;
-          const oseg = O._geom[Math.min(pair.bi, pair.bj)];
-          if (oseg && maxWindowWinding(oseg) < SELFLOOP_REF_STRAIGHT) { hasStraightRef = true; break; }
+          const refKm = drawnKm(O, Math.min(pair.bi, pair.bj), Math.max(pair.bi, pair.bj));
+          if (refKm > 0 && refKm < shortestRefKm) { shortestRefKm = refKm; refLineNum = O.number; }
         }
-        if (!hasStraightRef) continue;
-        // סיבוב ≥1.15 שאף קו אחר לא עושה — תקלה ודאית. גובר על סיווג ההצלבה (שעשוי
+        if (!(shortestRefKm < Infinity) || segKm / shortestRefKm < SELFLOOP_REF_RATIO) continue;
+        const waste = segKm - shortestRefKm;             // בזבוז מול הקו הקצר ביותר
+        // סיבוב ≥1.15 שקו אחר עושה קצר — תקלה ודאית. גובר על סיווג ההצלבה (שעשוי
         // לכנות אותו "כיסוי לגיטימי"). מסירים תקלה קיימת באותו מקטע ומחליפים.
         const ex = L.issues.findIndex((x) => x.segIdx && x.segIdx[0] === i);
         if (ex >= 0) L.issues.splice(ex, 1);
         if (L.segments[i]) L.segments[i].flags.detour = true;
         L.issues.push({
-          type: "selfloop", km, from, to, segIdx: [i], refKm: crowKm, longKm: segKm,
-          severity: sevDetour(km),
+          type: "selfloop", km: waste, from, to, segIdx: [i], refKm: shortestRefKm, longKm: segKm,
+          refNumber: refLineNum, severity: sevDetour(waste),
           diag: {
             kind: "selfloop", lineNumber: L.number, lineName: L.name,
             fromName: from.name, toName: to.name,
-            lineRoadKm: segKm, refRoadKm: crowKm, refNumber: null,
-            excessKm: km, crowKm, turns: +turns.toFixed(2), stopsBetween: 0,
+            lineRoadKm: segKm, refRoadKm: shortestRefKm, refNumber: refLineNum,
+            excessKm: waste, crowKm, turns: +turns.toFixed(2), stopsBetween: 0,
           },
         });
         added = true;

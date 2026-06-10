@@ -7,12 +7,12 @@ function fmt(n, d = 1) {
 const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "תקין" };
 
 // גרסת האפליקציה (SemVer: MAJOR.MINOR.PATCH) — מקור-אמת יחיד.
-const KAVBUG_VERSION = "1.3.2";
+const KAVBUG_VERSION = "1.3.3";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
-  { version: "1.3.2", date: "10.6.2026", items: [
-    "גלאי הסיבוב מסמן עכשיו רק כשקיים קו-ייחוס אחר שעובר את אותן שתי תחנות ביושר — הוכחה שהסיבוב מיותר. בלי קו-ייחוס (או אם כולם מקיפים) — לא מסומן. כך לא כל כיכר נסמנת.",
+  { version: "1.3.3", date: "10.6.2026", items: [
+    "סיבוב בכיכר מסומן עכשיו רק כשקו אחר עובר את אותו קטע בדרך *קצרה יותר* (הוכחה שהסיבוב מיותר). כיכר לבדה — לא תקלה. הכרטיס מציין מול איזה קו ההשוואה.",
   ] },
   { version: "1.3.1", date: "10.6.2026", items: [
     "גלאי הסיבוב מוגבל למקטעים עירוניים קצרים בלבד (מנע התראת-שווא של 27 ק\"מ על מקטע בין-עירוני).",
@@ -869,7 +869,8 @@ function fallbackVerdict(d) {
   // לולאה-עצמית (סיבוב מיותר): גאומטריה ודאית — הקו מקיף ≥1.15 סיבובים בכיכר.
   // אין קו-ייחוס ואין מה להשוות; ההכרעה "אמיתי" מיידית (לא לפול לשער "אין ייחוס").
   if (d.kind === "selfloop") {
-    return { verdict: "אמיתי", reason: `הקו מקיף ~${d.turns} סיבובים (לולאה סגורה — הקפת כיכר/טיפה) בין "${d.fromName}" ל-"${d.toName}" ואז ממשיך — סיבוב מיותר, עיקוף אמיתי.`, fallback: true };
+    const ref = d.refNumber != null ? `, בעוד קו ${d.refNumber} עובר אותו ב-${(d.refRoadKm || 0).toFixed(1)} ק"מ` : "";
+    return { verdict: "אמיתי", reason: `הקו מקיף ~${d.turns} סיבובים (כיכר/לולאה) בין "${d.fromName}" ל-"${d.toName}"${ref} — סיבוב מיותר, עיקוף אמיתי.`, fallback: true };
   }
   const extra = d.excessKm != null ? d.excessKm : ((d.lineRoadKm || 0) - (d.refRoadKm || 0));
   const ratio = d.ratio || (d.refRoadKm > 0 ? d.lineRoadKm / d.refRoadKm : 0);
@@ -1208,15 +1209,17 @@ function ProblemCard({ line, active, onClick, auto, dim, members, cityName }) {
             <div className="why">
               <div className="why-row">
                 <span className="why-lbl">הבעיה</span>
-                <span>הקו <b>מתפתל וחוזר אחורה</b> (לולאה) בין <b>{w.from.name}</b> ל-<b>{w.to.name}</b> — נוסע <b>{fmt(w.diag ? w.diag.lineRoadKm : w.km)}</b> ק"מ במקום קו אווירי של <b>{fmt(w.refKm)}</b> ק"מ.</span>
+                <span>הקו <b>מקיף כיכר/לולאה</b> בין <b>{w.from.name}</b> ל-<b>{w.to.name}</b> — נוסע <b>{fmt(w.diag ? w.diag.lineRoadKm : w.longKm)}</b> ק"מ במקטע.</span>
               </div>
               <div className="why-row">
                 <span className="why-lbl">לעומת</span>
-                <span>מעבר <b>ישר</b> בין שתי התחנות, בלי הלולאה.</span>
+                <span>{w.refNumber != null
+                  ? <React.Fragment>קו <b>{w.refNumber}</b> עובר את אותו קטע ישר, ב-<b>{fmt(w.refKm)}</b> ק"מ בלבד — בלי הסיבוב.</React.Fragment>
+                  : <React.Fragment>קו אחר עובר את אותו קטע <b>ישר</b>, בלי הסיבוב.</React.Fragment>}</span>
               </div>
               <div className="why-row fix">
                 <span className="why-lbl">המלצה</span>
-                <span>לוותר על הלולאה — חיסכון של <b>{fmt(w.km)}</b> ק"מ בכל נסיעה.</span>
+                <span>לעבור ישר {w.refNumber != null ? <React.Fragment>כמו קו <b>{w.refNumber}</b></React.Fragment> : "כמו הקו האחר"} — חיסכון של <b>{fmt(w.km)}</b> ק"מ בכל נסיעה.</span>
               </div>
             </div>
           </div>
