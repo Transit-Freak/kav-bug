@@ -7,10 +7,13 @@ function fmt(n, d = 1) {
 const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "תקין" };
 
 // גרסת האפליקציה (SemVer: MAJOR.MINOR.PATCH) — מקור-אמת יחיד.
-const KAVBUG_VERSION = "1.1.3";
+const KAVBUG_VERSION = "1.2.0";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
+  { version: "1.2.0", date: "10.6.2026", items: [
+    "כל עיר בארץ: אפשר להקליד שם של כל עיר בחלון ההעלאה — המערכת מאתרת את גבולותיה אוטומטית (OpenStreetMap). נשלח רק שם-העיר; קובץ ה-GTFS נשאר במכשיר.",
+  ] },
   { version: "1.1.3", date: "10.6.2026", items: [
     "תיקון: קווים שבהם הנציג שנבחר היה חסר מסלול (shape) הוצגו כקווים ישרים בין תחנות בלבד (במצב דיווח) ולא נותחו. ה-worker מעדיף עכשיו נציג עם מסלול — כך מסלול הקו האמיתי מוצג ומנותח. (נדרשת העלאה מחדש של קובץ ה-GTFS.)",
   ] },
@@ -45,17 +48,47 @@ const CITY_PRESETS = [
   { name: "נתניה", bbox: [32.28, 34.83, 32.36, 34.89] },
 ];
 
+// ממיר שם-עיר ל-bbox דרך OpenStreetMap/Nominatim. נשלח *רק שם-העיר* — קובץ ה-GTFS
+// נשאר מקומי. מחזיר { bbox:[minLat,minLng,maxLat,maxLng], display }.
+async function geocodeCityBBox(name) {
+  const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=he&countrycodes=il&q=" +
+    encodeURIComponent(name);
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error("geocode-" + res.status);
+  const arr = await res.json();
+  if (!arr || !arr.length || !arr[0].boundingbox) throw new Error("not-found");
+  const bb = arr[0].boundingbox.map(Number); // [minLat, maxLat, minLng, maxLng]
+  return { bbox: [bb[0], bb[2], bb[1], bb[3]], display: arr[0].display_name };
+}
+
 function UploadModal({ open, onClose, onProcess, job }) {
-  const [presetIdx, setPresetIdx] = React.useState(0);
+  const [cityText, setCityText] = React.useState(CITY_PRESETS[0].name);
+  const [geo, setGeo] = React.useState({ status: "idle" });
   const [file, setFile] = React.useState(null);
   const [drag, setDrag] = React.useState(false);
   const inputRef = React.useRef(null);
   if (!open) return null;
 
   const busy = job && job.status === "running";
-  const preset = CITY_PRESETS[presetIdx];
+  const locating = geo.status === "locating";
 
   const pick = (f) => { if (f) setFile(f); };
+
+  // סורק: אם השם תואם עיר מוכרת — bbox מיידי (ללא רשת); אחרת מאתר דרך OSM.
+  const onScan = async () => {
+    const name = cityText.trim();
+    if (!file || !name) return;
+    const p = CITY_PRESETS.find((x) => x.name === name);
+    if (p) { onProcess(file, p.bbox, p.name); return; }
+    setGeo({ status: "locating" });
+    try {
+      const r = await geocodeCityBBox(name);
+      setGeo({ status: "idle" });
+      onProcess(file, r.bbox, name);
+    } catch (_e) {
+      setGeo({ status: "error", msg: `לא הצלחתי לאתר את "${name}". בדקו את האיות, או בחרו עיר מהרשימה.` });
+    }
+  };
 
   return (
     <div className="modal-overlay" onClick={() => !busy && onClose()}>
@@ -72,16 +105,18 @@ function UploadModal({ open, onClose, onProcess, job }) {
         </p>
 
         <label className="field-label">עיר לסריקה</label>
-        <select
+        <input
           className="select"
-          value={presetIdx}
-          disabled={busy}
-          onChange={(e) => setPresetIdx(+e.target.value)}
-        >
-          {CITY_PRESETS.map((p, i) => (
-            <option key={p.name} value={i}>{p.name}</option>
-          ))}
-        </select>
+          list="kavbug-city-presets"
+          value={cityText}
+          disabled={busy || locating}
+          placeholder="הקלידו שם עיר (למשל: כפר סבא)"
+          onChange={(e) => { setCityText(e.target.value); if (geo.status !== "idle") setGeo({ status: "idle" }); }}
+        />
+        <datalist id="kavbug-city-presets">
+          {CITY_PRESETS.map((p) => <option key={p.name} value={p.name} />)}
+        </datalist>
+        <p className="modal-hint">כל עיר בארץ — מאתר את גבולותיה אוטומטית. (רק שם-העיר נשלח לאיתור; הקובץ נשאר במכשירכם.)</p>
 
         <div
           className={"drop " + (drag ? "over " : "") + (file ? "has " : "")}
@@ -126,13 +161,16 @@ function UploadModal({ open, onClose, onProcess, job }) {
         ) : (
           <button
             className="btn-primary"
-            disabled={!file}
-            onClick={() => onProcess(file, preset.bbox, preset.name)}
+            disabled={!file || !cityText.trim() || locating}
+            onClick={onScan}
           >
-            {file ? `סרוק את ${preset.name}` : "בחרו קובץ כדי להתחיל"}
+            {locating ? "מאתר את העיר…" : file ? `סרוק את ${cityText.trim() || "העיר"}` : "בחרו קובץ כדי להתחיל"}
           </button>
         )}
 
+        {geo.status === "error" && (
+          <div className="job-error">{geo.msg}</div>
+        )}
         {job && job.status === "error" && (
           <div className="job-error">{job.message}</div>
         )}
