@@ -940,21 +940,49 @@
         // קו-הייחוס הוא ההוכחה מהשטח שאפשר לעבור את הקטע קצר — והקו הנבדק מקיף
         // לחינם. כיכר *לבדה* (בלי קו אחר שעובר אותה קצר) אינה תקלה. (קו 70: 372 מ',
         // מול קווים 2/16 שעוברים את אותן תחנות ב-~290 מ' — יחס 1.27 → תקלה.)
-        let shortestRefKm = Infinity, refLineNum = null;
+        let shortestRefKm = Infinity, refLineNum = null, refLine = null, refLo = 0, refHi = 0;
         for (const O of (servedBy.get(from.id) || [])) {
           if (O === L || baseNum(O.number) === baseNum(L.number)) continue;
           const pair = adjacentStopPair(O, from.id, to.id, 2);
           if (!pair) continue;
-          const lo = Math.min(pair.bi, pair.bj), hi = Math.max(pair.bi, pair.bj);
+          // כיוון-נסיעה הפוך (bj<bi): קו-הייחוס נוסע to→from — כיוון מנוגד, ייתכן על
+          // רחובות חד-סטריים אחרים; אורכו אינו מוכיח שאפשר לעבור קצר בכיוון הנבדק.
+          // (זהה לשער הכיוון-ההפוך בגלאי ההצלבה — מונע ייחוס פסול ללולאה.)
+          if (pair.bj < pair.bi) continue;
+          // נקודת-מוצא רחוקה מדי (>10 ק"מ) = ענף-רשת זר, לא אלטרנטיבה אמיתית — בדיוק
+          // כמו בגלאי ההצלבה. קריטי לקווים בין-עירוניים שמקטע מקומי שלהם מושווה
+          // בטעות לקו מקומי מעיר אחרת. (קו 56א באר-שבע↔דימונה מול קו 49 מקומי בדימונה
+          // — מוצא במרחק ~28 ק"מ → אינו ראיה תקפה.)
+          if (L.stops[0] && O.stops[0] && haversine(L.stops[0], O.stops[0]) > ORIGIN_MAX_KM) continue;
+          const lo = pair.bi, hi = pair.bj;                // bj>bi מובטח (כיוון קדימה)
           // קו-ייחוס שמתחיל/מסיים את מסלולו באחת התחנות אינו מסדרון-מעבר תקף:
           // הוא עושה משם קפיצה קצרה למסוף, לא חוצה את הקטע. (קו 50 שמסיים שם מול
           // קו 14א.) פוסלים אותו כקו-ייחוס.
           if (lo === 0 || hi === O.stops.length - 1) continue;
           const refKm = drawnKm(O, lo, hi);
-          if (refKm > 0 && refKm < shortestRefKm) { shortestRefKm = refKm; refLineNum = O.number; }
+          if (refKm > 0 && refKm < shortestRefKm) { shortestRefKm = refKm; refLineNum = O.number; refLine = O; refLo = lo; refHi = hi; }
         }
         if (!(shortestRefKm < Infinity) || segKm / shortestRefKm < SELFLOOP_REF_RATIO) continue;
         const waste = segKm - shortestRefKm;             // בזבוז מול הקו הקצר ביותר
+        // גאומטריית קו-הייחוס בין שתי התחנות (לציור הקו הירוק על המפה) — נבנית
+        // מה-shape הגולמי של קו-הייחוס, חתוך בין נקודות-ההטלה (refLo→refHi), בדיוק
+        // כמו בגלאי ההצלבה. בלעדיה הקו הירוק לא צויר עבור לולאות (היה חסר).
+        const refGeom = (function () {
+          const RL = refLine;
+          if (!RL || !RL.shape || RL.shape.length < 2 || !RL._snap) return null;
+          let A = RL._snap[refLo], B = RL._snap[refHi];
+          if (!A || !B) return null;
+          if (B.along < A.along) { const t = A; A = B; B = t; } // לפי סדר ה-shape
+          const out = [A.proj];
+          for (let k = A.seg + 1; k <= B.seg; k++) {
+            const pt = [RL.shape[k][0], RL.shape[k][1]];
+            const lastp = out[out.length - 1];
+            if (!lastp || lastp[0] !== pt[0] || lastp[1] !== pt[1]) out.push(pt);
+          }
+          const lastp = out[out.length - 1];
+          if (!lastp || lastp[0] !== B.proj[0] || lastp[1] !== B.proj[1]) out.push(B.proj);
+          return out.length > 1 ? out : null;
+        })();
         // סיבוב ≥1.15 שקו אחר עושה קצר — תקלה ודאית. גובר על סיווג ההצלבה (שעשוי
         // לכנות אותו "כיסוי לגיטימי"). מסירים תקלה קיימת באותו מקטע ומחליפים.
         const ex = L.issues.findIndex((x) => x.segIdx && x.segIdx[0] === i);
@@ -962,7 +990,8 @@
         if (L.segments[i]) L.segments[i].flags.detour = true;
         L.issues.push({
           type: "selfloop", km: waste, from, to, segIdx: [i], refKm: shortestRefKm, longKm: segKm,
-          refNumber: refLineNum, severity: sevDetour(waste),
+          refNumber: refLineNum, refSegIdx: [refLo, refHi], refGeom,
+          refColor: refLine && refLine.color, severity: sevDetour(waste),
           diag: {
             kind: "selfloop", lineNumber: L.number, lineName: L.name,
             fromName: from.name, toName: to.name,
