@@ -7,10 +7,13 @@ function fmt(n, d = 1) {
 const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "תקין" };
 
 // גרסת האפליקציה (SemVer: MAJOR.MINOR.PATCH) — מקור-אמת יחיד.
-const KAVBUG_VERSION = "1.3.10";
+const KAVBUG_VERSION = "1.3.11";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
+  { version: "1.3.11", date: "13.6.2026", items: [
+    "אפשר עכשיו לעצור את איתור-העיר באמצע: בטעות-כתיב או רשת איטית, לחיצה על \"✕ עצור את האיתור\" (או על ה-✕ לסגירה) מבטלת את החיפוש מיד — בלי לחכות שייגמר.",
+  ] },
   { version: "1.3.10", date: "13.6.2026", items: [
     "גלאי הלולאה (סיבוב מיותר) הוחמר כמו גלאי העיקוף: קו-ייחוס שמגיע מ*ענף-רשת זר* (נקודת-מוצא רחוקה >10 ק\"מ) או נוסע ב*כיוון הפוך* לא ישמש יותר כהוכחה. מנע סימון-שווא של קו בין-עירוני שמקטע מקומי שלו הושווה לקו מקומי מעיר אחרת. (קו 56א באר-שבע↔דימונה מול קו 49 מדימונה.)",
     "הקו הירוק (מסלול קו-הייחוס) מצויר עכשיו גם עבור לולאות/כיכרות — קודם הוא לא הופיע במפה עבור תקלות מסוג \"סיבוב מיותר\".",
@@ -84,10 +87,10 @@ const CITY_PRESETS = [
 
 // ממיר שם-עיר ל-bbox דרך OpenStreetMap/Nominatim. נשלח *רק שם-העיר* — קובץ ה-GTFS
 // נשאר מקומי. מחזיר { bbox:[minLat,minLng,maxLat,maxLng], display }.
-async function geocodeCityBBox(name) {
+async function geocodeCityBBox(name, signal) {
   const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=he&countrycodes=il&q=" +
     encodeURIComponent(name);
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  const res = await fetch(url, { headers: { Accept: "application/json" }, signal });
   if (!res.ok) throw new Error("geocode-" + res.status);
   const arr = await res.json();
   if (!arr || !arr.length || !arr[0].boundingbox) throw new Error("not-found");
@@ -101,6 +104,7 @@ function UploadModal({ open, onClose, onProcess, job }) {
   const [file, setFile] = React.useState(null);
   const [drag, setDrag] = React.useState(false);
   const inputRef = React.useRef(null);
+  const abortRef = React.useRef(null);
   if (!open) return null;
 
   const busy = job && job.status === "running";
@@ -108,28 +112,38 @@ function UploadModal({ open, onClose, onProcess, job }) {
 
   const pick = (f) => { if (f) setFile(f); };
 
+  // ביטול האיתור באמצע (טעות-כתיב / רשת איטית) — עוצר את בקשת ה-OSM ומחזיר ל-idle.
+  const cancelLocate = () => { if (abortRef.current) abortRef.current.abort(); };
+  // סגירת החלון מבטלת גם איתור-עיר תלוי (אבל לא בזמן עיבוד GTFS פעיל).
+  const handleClose = () => { if (busy) return; cancelLocate(); onClose(); };
+
   // סורק: אם השם תואם עיר מוכרת — bbox מיידי (ללא רשת); אחרת מאתר דרך OSM.
   const onScan = async () => {
     const name = cityText.trim();
     if (!file || !name) return;
     const p = CITY_PRESETS.find((x) => x.name === name);
     if (p) { onProcess(file, p.bbox, p.name); return; }
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     setGeo({ status: "locating" });
     try {
-      const r = await geocodeCityBBox(name);
+      const r = await geocodeCityBBox(name, ctrl.signal);
       setGeo({ status: "idle" });
       onProcess(file, r.bbox, name);
-    } catch (_e) {
+    } catch (e) {
+      if (e && e.name === "AbortError") { setGeo({ status: "idle" }); return; } // בוטל ע"י המשתמש
       setGeo({ status: "error", msg: `לא הצלחתי לאתר את "${name}". בדקו את האיות, או בחרו עיר מהרשימה.` });
+    } finally {
+      abortRef.current = null;
     }
   };
 
   return (
-    <div className="modal-overlay" onClick={() => !busy && onClose()}>
+    <div className="modal-overlay" onClick={handleClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h2>העלאת קובץ GTFS</h2>
-          <button className="x" onClick={() => !busy && onClose()} disabled={busy}>×</button>
+          <button className="x" onClick={handleClose} disabled={busy}>×</button>
         </div>
 
         <p className="modal-note">
@@ -192,13 +206,17 @@ function UploadModal({ open, onClose, onProcess, job }) {
               <span className="num">{Math.round((job.pct || 0) * 100)}%</span>
             </div>
           </div>
+        ) : locating ? (
+          <button className="btn-primary" onClick={cancelLocate}>
+            ✕ עצור את האיתור…
+          </button>
         ) : (
           <button
             className="btn-primary"
-            disabled={!file || !cityText.trim() || locating}
+            disabled={!file || !cityText.trim()}
             onClick={onScan}
           >
-            {locating ? "מאתר את העיר…" : file ? `סרוק את ${cityText.trim() || "העיר"}` : "בחרו קובץ כדי להתחיל"}
+            {file ? `סרוק את ${cityText.trim() || "העיר"}` : "בחרו קובץ כדי להתחיל"}
           </button>
         )}
 
