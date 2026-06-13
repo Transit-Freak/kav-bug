@@ -7,10 +7,13 @@ function fmt(n, d = 1) {
 const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "תקין" };
 
 // גרסת האפליקציה (SemVer: MAJOR.MINOR.PATCH) — מקור-אמת יחיד.
-const KAVBUG_VERSION = "1.3.6";
+const KAVBUG_VERSION = "1.3.7";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
+  { version: "1.3.7", date: "10.6.2026", items: [
+    "קווים שהמנוע פסל כ\"לא ניתן להשוואה\" (קו-ייחוס מכיוון/ענף שונה, כמו קו 159 מול 152) הועברו לטאב נפרד \"לא רלוונטי\" — הם אינם מזהמים יותר את \"אמיתי\" ולא את \"ספק\".",
+  ] },
   { version: "1.3.6", date: "10.6.2026", items: [
     "תוקן: עיקוף עם בליטה/לולאה ייחודית גדולה מסומן עכשיו \"אמיתי\" גם כשקו-הייחוס עובר דרך תחנות-ביניים (קודם נדחה כ\"לא ניתן להשוואה\"). הגאומטריה גוברת על היריסטיקת-הרצף. (קו 882: בליטה 513 מ'.)",
   ] },
@@ -1342,13 +1345,18 @@ function Panel({ city, activeIdx, setActiveIdx, aiReview }) {
     const v = rv.verdicts[keyOf(line)];
     return v && v.status === "done" ? v.verdict : null;
   };
+  // "לא ניתן להשוואה" = השוואה לא-תקפה (קו-הייחוס מכיוון/ענף שונה, תחנת-קצה,
+  // רצף שונה...) — *אינו ספק*, אלא לא-רלוונטי. מופרד לקבוצה משלו ואינו מזהם את
+  // "אמיתי" ולא את "ספק". (קו 159 מול קו 152 שמגיע מ-4 ק"מ משם.)
+  const isNotComp = (line) => verdictOf(line) === "לא ניתן להשוואה";
   const isDoubt = (line) => {
     const vd = verdictOf(line);
-    return vd === "רעש" || vd === "כיסוי לגיטימי" || vd === "ספק" || vd === "לא ניתן להשוואה";
+    return vd === "רעש" || vd === "כיסוי לגיטימי" || vd === "ספק";
   };
   const confirmedCount = flagged.filter((x) => verdictOf(x.line) === "אמיתי").length;
   const doubtCount = flagged.filter((x) => isDoubt(x.line)).length;
-  const pendingCount = Math.max(0, flagged.length - confirmedCount - doubtCount);
+  const notCompCount = flagged.filter((x) => isNotComp(x.line)).length;
+  const pendingCount = Math.max(0, flagged.length - confirmedCount - doubtCount - notCompCount);
   // תיאור סיכום דינמי — מציג אך ורק סטטוסים שערכם > 0 (אסור להציג ערך 0).
   // אם "בספק" = 0 → "אמיתיים ולבדיקה בלבד"; אם רק קטגוריה אחת → היא בלבד; וכו'.
   const statusSummary = () => {
@@ -1374,9 +1382,10 @@ function Panel({ city, activeIdx, setActiveIdx, aiReview }) {
     return r !== 0 ? r : (b.line.wasted - a.line.wasted);
   });
   const visible = sorted.filter((x) => {
-    if (filterMode === "real") return !isDoubt(x.line);
-    if (filterMode === "doubt") return isDoubt(x.line);
-    return true; // "all" — כל 34 החשדים
+    if (filterMode === "real") return !isDoubt(x.line) && !isNotComp(x.line); // אמיתי + ממתינים
+    if (filterMode === "doubt") return isDoubt(x.line);                       // רעש/כיסוי/ספק
+    if (filterMode === "notcomp") return isNotComp(x.line);                   // לא ניתן להשוואה
+    return true; // "all"
   });
   // ── איחוד באגים זהים (Identical Bug Consolidation) ──
   // אם אותו מקטע (מוצא→יעד) מול אותו קו-ייחוס מופיע בכמה קווים נבדקים (כמו 67/70),
@@ -1422,8 +1431,11 @@ function Panel({ city, activeIdx, setActiveIdx, aiReview }) {
       </div>
       {flagged.length > 0 && (rv.done > 0) && (
         <div className="seg-filter" role="tablist">
-          <button className={"seg" + (filterMode === "real" ? " on" : "")} onClick={() => setFilterMode("real")}>אמיתי {flagged.length - doubtCount}</button>
+          <button className={"seg" + (filterMode === "real" ? " on" : "")} onClick={() => setFilterMode("real")}>אמיתי {confirmedCount + pendingCount}</button>
           <button className={"seg" + (filterMode === "doubt" ? " on" : "")} onClick={() => setFilterMode("doubt")}>ספק {doubtCount}</button>
+          {notCompCount > 0 && (
+            <button className={"seg" + (filterMode === "notcomp" ? " on" : "")} onClick={() => setFilterMode("notcomp")}>לא רלוונטי {notCompCount}</button>
+          )}
         </div>
       )}
       <div className="cards">
@@ -1441,7 +1453,7 @@ function Panel({ city, activeIdx, setActiveIdx, aiReview }) {
               active={activeHere}
               onClick={() => setActiveIdx(primary.i)}
               auto={primary.auto}
-              dim={isDoubt(primary.line)}
+              dim={isDoubt(primary.line) || isNotComp(primary.line)}
               members={isMerged ? g.members : null}
               cityName={city.name}
             />
