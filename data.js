@@ -528,7 +528,11 @@
           const rPrev = rLo - 1 >= 0 ? O.stops[rLo - 1] : null;
           const prevGap = (tPrev && rPrev) ? haversine(tPrev, rPrev) : null;
           const farPrev = prevGap != null && prevGap > 0.3; // 300 מ'
-          const compatible = (ang == null || ang < APPROACH_MAX_DEG) && !farPrev;
+          // כיוון-נסיעה הפוך: קו-הייחוס עובר X→Y בסדר-נסיעה הפוך (bj<bi) — הוא נוסע
+          // Y→X, כיוון מנוגד. אינו אלטרנטיבה תקפה בכיוון הנבדק (רחובות חד-סטריים),
+          // ולכן אינו "תואם". נשמר רק כגיבוי-אחרון כדי שה-UI יסביר "לא ניתן להשוואה".
+          const reversed = pair.bj < pair.bi;
+          const compatible = !reversed && (ang == null || ang < APPROACH_MAX_DEG) && !farPrev;
           const cand = { O, roadB, bi: pair.bi, bj: pair.bj, ang };
           if (compatible) {
             if (!best || roadB < best.roadB) best = cand;       // תואם-כיווניות — עדיפות
@@ -643,6 +647,10 @@
             // מקור-אמת ששימש לבחירת קו-הייחוס (approachAngleDiffAt). ערך זה תמיד
             // ≤90° כשנבחר קו תואם-ציר; >90° רק כשלא נמצא אף מועמד תואם.
             approachAngleDiff: approachAngleDiffAt(L, p, f.ref, Math.min(f.refBi, f.refBj)),
+            // כיוון-נסיעה הפוך: קו-הייחוס עובר את שתי התחנות בסדר-נסיעה הפוך
+            // (refBj<refBi → נוסע B→A). כיוון מנוגד — פסילה קשיחה בהכרעה, גם כש-
+            // approachAngleDiff אינו ניתן לחישוב (קו-הייחוס בתחנת-מוצא).
+            oppositeDirection: f.refBj < f.refBi,
             // שער-כיווניות: true כשנבחר *רק* קו-ייחוס מכיוון-כניסה שונה (>45°),
             // כלומר אין אף קו שחולק את וקטור-הכניסה למקטע — לא ניתן להשוואה.
             approachIncompatible: !!f.approachIncompatible,
