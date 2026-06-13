@@ -177,14 +177,25 @@ function KavBug() {
   const [job, setJob] = React.useState(null);
   const [dataVersion, setDataVersion] = React.useState(0);
   const workerRef = React.useRef(null);
+  const cancelledRef = React.useRef(false);
   const minExcess = 0.05;
 
+  // ביטול עיבוד פעיל (לחיצה על ✕ בזמן טעינה): עוצר את ה-worker, מסמן שבוטל כדי
+  // ששלב-הסיום (גם אחרי בדיקת-התקלות) לא ירוץ, ומחזיר את החלון למצב התחלתי.
+  const cancelJob = () => {
+    cancelledRef.current = true;
+    if (workerRef.current) { workerRef.current.terminate(); workerRef.current = null; }
+    setJob(null);
+  };
+
   const processFile = async (file, bbox, name) => {
+    cancelledRef.current = false;
     setJob({ status: "running", pct: 0, phase: "קורא את הקובץ" });
     if (workerRef.current) workerRef.current.terminate();
     const worker = new Worker("kavbug/gtfs-worker.js");
     workerRef.current = worker;
     worker.onmessage = (e) => {
+      if (cancelledRef.current) return;           // בוטל ע"י המשתמש — מתעלמים מהודעות
       const m = e.data;
       if (m.type === "progress") {
         setJob((j) => ({ ...j, status: "running", pct: m.pct, phase: m.phase }));
@@ -196,6 +207,7 @@ function KavBug() {
         const analyzed = D.analyzeCity(m.cityName, { minExcess });
         const flaggedN = analyzed.lines.filter((l) => l.redundantCount > 0 && l.worst && l.worst.diag).length;
         const finish = () => {
+          if (cancelledRef.current) return;         // בוטל בזמן בדיקת-התקלות — לא לסיים
           reviewedKeyRef.current = m.cityName + "#" + (dataVersion + 1);
           setJob({ status: "done" });
           setUploadOpen(false);
@@ -1083,7 +1095,7 @@ ${engineFacts}
         onInfo={() => setInfoOpen(true)}
         onReport={enterReport}
       />
-      <UploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} onProcess={processFile} job={job} />
+      <UploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} onProcess={processFile} onCancel={cancelJob} job={job} />
       <InfoModal open={infoOpen} onClose={() => setInfoOpen(false)} />
       <div className="body" style={{ "--panel-w": panelWidth + "px" }}>
         {reportMode && city ? (

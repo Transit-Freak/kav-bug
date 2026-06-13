@@ -8,10 +8,13 @@ const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "
 
 // גרסת האפליקציה (מספור דו-ספרתי: גדולה.קטנה) — מקור-אמת יחיד. כל שחרור מקדם את
 // הספרה הקטנה; הספרה הגדולה עולה באבני-דרך משמעותיות. (עד 1.3.11 היה SemVer.)
-const KAVBUG_VERSION = "3.11";
+const KAVBUG_VERSION = "3.12";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
+  { version: "3.12", date: "13.6.2026", items: [
+    "עכשיו אפשר לעצור גם את *עיבוד הקובץ* באמצע (לא רק את איתור-העיר): לחיצה על ה-✕ או על \"✕ בטל עיבוד\" בזמן הסריקה הארוכה עוצרת מיד את העיבוד ומחזירה את החלון. קודם ה-✕ היה מושבת בזמן טעינה.",
+  ] },
   { version: "3.11", date: "13.6.2026", items: [
     "אפשר עכשיו לעצור את איתור-העיר באמצע: בטעות-כתיב או רשת איטית, לחיצה על \"✕ עצור את האיתור\" (או על ה-✕ לסגירה) מבטלת את החיפוש מיד — בלי לחכות שייגמר.",
     "מספור הגרסאות עבר למבנה דו-ספרתי פשוט (גדולה.קטנה) — הגרסה הקודמת 1.3.11 היא כעת 3.11. ההיסטוריה הישנה ביומן נשמרה כפי שהייתה.",
@@ -100,7 +103,7 @@ async function geocodeCityBBox(name, signal) {
   return { bbox: [bb[0], bb[2], bb[1], bb[3]], display: arr[0].display_name };
 }
 
-function UploadModal({ open, onClose, onProcess, job }) {
+function UploadModal({ open, onClose, onProcess, onCancel, job }) {
   const [cityText, setCityText] = React.useState(CITY_PRESETS[0].name);
   const [geo, setGeo] = React.useState({ status: "idle" });
   const [file, setFile] = React.useState(null);
@@ -116,8 +119,13 @@ function UploadModal({ open, onClose, onProcess, job }) {
 
   // ביטול האיתור באמצע (טעות-כתיב / רשת איטית) — עוצר את בקשת ה-OSM ומחזיר ל-idle.
   const cancelLocate = () => { if (abortRef.current) abortRef.current.abort(); };
-  // סגירת החלון מבטלת גם איתור-עיר תלוי (אבל לא בזמן עיבוד GTFS פעיל).
-  const handleClose = () => { if (busy) return; cancelLocate(); onClose(); };
+  // סגירת החלון: בזמן עיבוד GTFS פעיל — מבטל את העיבוד (עוצר את ה-worker); אחרת
+  // מבטל איתור-עיר תלוי וסוגר. כך ה-✕ עוצר טעינה גם באמצע סריקה ארוכה.
+  const handleClose = () => {
+    if (busy) { if (onCancel) onCancel(); onClose(); return; }
+    cancelLocate();
+    onClose();
+  };
 
   // סורק: אם השם תואם עיר מוכרת — bbox מיידי (ללא רשת); אחרת מאתר דרך OSM.
   const onScan = async () => {
@@ -141,11 +149,11 @@ function UploadModal({ open, onClose, onProcess, job }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={handleClose}>
+    <div className="modal-overlay" onClick={() => { if (!busy) handleClose(); }}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h2>העלאת קובץ GTFS</h2>
-          <button className="x" onClick={handleClose} disabled={busy}>×</button>
+          <button className="x" onClick={handleClose} title={busy ? "בטל עיבוד" : "סגור"}>×</button>
         </div>
 
         <p className="modal-note">
@@ -207,6 +215,9 @@ function UploadModal({ open, onClose, onProcess, job }) {
               <span>{job.phase || "מעבד…"}</span>
               <span className="num">{Math.round((job.pct || 0) * 100)}%</span>
             </div>
+            <button className="btn-secondary" onClick={handleClose} style={{ marginTop: "0.6rem" }}>
+              ✕ בטל עיבוד
+            </button>
           </div>
         ) : locating ? (
           <button className="btn-primary" onClick={cancelLocate}>
