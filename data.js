@@ -945,6 +945,13 @@
           if (O === L || baseNum(O.number) === baseNum(L.number)) continue;
           const pair = adjacentStopPair(O, from.id, to.id, 2);
           if (!pair) continue;
+          // ציר-כניסה לפי תחנות: קו-הייחוס חייב להגיע לתחנה הראשונה במקטע מאותה
+          // תחנה-קודמת כמו הקו הנבדק. תחנה-קודמת שונה ⇒ הוא הגיע למקטע בדרך אחרת
+          // (אותו זוג-תחנות אך רצף שונה) — והסיבוב נובע מכיוון-ההגעה, לא מבזבוז
+          // שאפשר ליישר. (קו שמגיע מאותה תחנה-קודמת — סיבוב מיותר אמיתי — נשמר.)
+          const tPrev = i - 1 >= 0 ? L.stops[i - 1] : null;
+          const rPrev = pair.bi - 1 >= 0 ? O.stops[pair.bi - 1] : null;
+          if (!tPrev || !rPrev || tPrev.id !== rPrev.id) continue;
           const lo = Math.min(pair.bi, pair.bj), hi = Math.max(pair.bi, pair.bj);
           // קו-ייחוס שמתחיל/מסיים את מסלולו באחת התחנות אינו מסדרון-מעבר תקף:
           // הוא עושה משם קפיצה קצרה למסוף, לא חוצה את הקטע. (קו 50 שמסיים שם מול
