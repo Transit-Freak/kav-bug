@@ -736,6 +736,9 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
 .country-controls .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
 .country-controls .chip .chip-n { opacity: .7; font-weight: 700; }
 .country-controls .chip.on .chip-n { opacity: .9; }
+.country-controls .chip-sort { border-color: var(--brand); color: var(--brand-ink); font-weight: 700; }
+.country-controls .chip-sort.on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-ink); }
+.country-table td.waste { font-weight: 700; color: var(--high); }
 .country-search {
   flex: 1; min-width: 140px; height: 34px; border: 1px solid var(--line-strong);
   border-radius: 10px; padding: 0 10px; font-family: "Assistant", sans-serif; font-size: 14px;

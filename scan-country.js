@@ -190,14 +190,21 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
   const repTrips = new Set();
   for (const v of bySig.values()) repTrips.add(v.trip);
   const tripRoute = new Map(), tripShape = new Map();
+  // ספירת נסיעות לכל קו לפי service_id — כדי לאמוד "יום עמוס" (ה-service עם הכי
+  // הרבה נסיעות, בקירוב יום חול עמוס). משמש לחישוב ק"מ-מבוזבזים ביום.
+  const routeSvc = new Map(); // route_id -> Map(service_id -> count)
   runUnzip(u8, {
     "trips.txt": { onLine: rowHandler((f, ix) => {
       const t = f[ix["trip_id"]];
+      const rid = f[ix["route_id"]], svc = ix["service_id"] != null ? f[ix["service_id"]] : "";
+      if (rid) { let m = routeSvc.get(rid); if (!m) { m = new Map(); routeSvc.set(rid, m); } m.set(svc, (m.get(svc) || 0) + 1); }
       if (!repTrips.has(t)) return;
-      tripRoute.set(t, f[ix["route_id"]]);
+      tripRoute.set(t, rid);
       if (ix["shape_id"] != null) { const sid = (f[ix["shape_id"]] || "").trim(); if (sid) tripShape.set(t, sid); }
     }) },
   });
+  const tripsBusiest = new Map(); // route_id -> נסיעות ביום העמוס (max על פני services)
+  for (const [rid, m] of routeSvc) { let mx = 0; for (const c of m.values()) if (c > mx) mx = c; tripsBusiest.set(rid, mx); }
 
   // נציג אחד לכל route (עדיפות: יש shape, ואז הכי הרבה תחנות)
   const bestPerRoute = new Map();
@@ -242,6 +249,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
     lines.push({
       number: info.number, operator: agencies.get(info.agencyId) || "", color: DEFAULT_COLOR,
       name: info.name || ("קו " + info.number), stops: pts, shape: sid ? (shapePoly.get(sid) || null) : null,
+      _rid: rid, _tripsDay: tripsBusiest.get(rid) || 0,
     });
   }
   console.error("  קווים שנבנו:", lines.length, "| זמן עד כה:", secs(tnow() - t0));
@@ -287,15 +295,18 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       const segIdx = it.segIdx && it.segIdx[0];
       const seg = (d.lineGeometry && d.lineGeometry.length > 1) ? d.lineGeometry
         : (L._geom && segIdx != null && L._geom[segIdx]) || null;
-      const lineShape = cap(thin(L.shape, 0.0009), 130); // דילול ~30 מ' + תקרת 130 נק' (רקע)
+      const lineShape = cap(thin(L.shape, 0.0004), 180); // דילול ~20 מ' + תקרת 180 נק' (רקע)
+      const excessKm = +(it.km || d.excessKm || 0).toFixed(3);
+      const tripsDay = L._tripsDay || 0;
       issues.push({
         line: L.number, operator: L.operator, type: it.type,
         from: it.from && it.from.name, to: it.to && it.to.name,
         lat: it.from && it.from.lat, lng: it.from && it.from.lng,
-        ref: it.refNumber, excessKm: +(it.km || d.excessKm || 0).toFixed(3),
+        ref: it.refNumber, excessKm,
+        tripsDay, wasteDayKm: +(excessKm * tripsDay).toFixed(1),
         ratio: d.ratio != null ? +d.ratio.toFixed(2) : null,
         verdict: vr.verdict, reason: vr.reason || "",
-        seg: round5(seg), refGeom: round5(it.refGeom), lineShape: round4(lineShape),
+        seg: round5(seg), refGeom: round5(it.refGeom), lineShape: round5(lineShape),
       });
     }
   }
@@ -303,21 +314,23 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
 
   // ---- כתיבה ----
   const real = issues.filter((i) => i.verdict === "אמיתי");
+  const totalWasteDayKm = +real.reduce((s, i) => s + (i.wasteDayKm || 0), 0).toFixed(0);
   const report = {
     generatedAt: new Date().toISOString(),
     sourceZip: path.basename(zipPath),
     totalLines: analyzed.lines.length,
     totalIssues: issues.length,
     realCount: real.length,
+    totalWasteDayKm, // סה"כ ק"מ מבוזבזים ביום עמוס (עיקופים אמיתיים × נסיעות/יום)
     byVerdict,
     issues,
   };
   fs.writeFileSync(outPrefix + ".json", JSON.stringify(report, null, 2));
 
   const esc = (s) => '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"';
-  const header = ["verdict", "line", "operator", "type", "from", "to", "ref", "excessKm", "ratio", "lat", "lng", "reason"];
+  const header = ["verdict", "line", "operator", "type", "from", "to", "ref", "excessKm", "tripsDay", "wasteDayKm", "ratio", "lat", "lng", "reason"];
   const csv = [header.join(",")].concat(
-    issues.map((i) => [i.verdict, i.line, i.operator, i.type, i.from, i.to, i.ref, i.excessKm, i.ratio, i.lat, i.lng, i.reason].map(esc).join(","))
+    issues.map((i) => [i.verdict, i.line, i.operator, i.type, i.from, i.to, i.ref, i.excessKm, i.tripsDay, i.wasteDayKm, i.ratio, i.lat, i.lng, i.reason].map(esc).join(","))
   ).join("\n");
   fs.writeFileSync(outPrefix + ".csv", "﻿" + csv); // BOM כדי שעברית תיפתח נכון באקסל
 
@@ -328,6 +341,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
   console.error("פילוח לפי הכרעה:");
   for (const [k, n] of Object.entries(byVerdict).sort((a, b) => b[1] - a[1])) console.error("   " + k + ": " + n);
   console.error("עיקופים *אמיתיים*:", real.length);
+  console.error('ק"מ מבוזבזים ביום עמוס (אמיתיים):', totalWasteDayKm.toLocaleString("en-US"));
   console.error("זמן כולל:", secs(tnow() - t0));
   console.error("נכתב: " + outPrefix + ".json , " + outPrefix + ".csv");
 })();

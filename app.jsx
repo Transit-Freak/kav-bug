@@ -348,15 +348,15 @@ function KavBug() {
       L.polyline(shape, { color: ROUTE, weight: 5, opacity: 0.5, lineCap: "round", lineJoin: "round" })
         .addTo(grp).bindTooltip(`קו ${issue.line}${issue.operator ? " · " + issue.operator : ""}`, { className: "seg-tip", sticky: true });
     }
-    // קו-ההשוואה (ירוק)
-    if (ref && ref.length > 1) {
-      L.polyline(ref, { color: ALT, weight: 6, opacity: 0.95, dashArray: "2 9", lineCap: "round", lineJoin: "round" })
-        .addTo(grp).bindTooltip(`מסלול הקו להשוואה · קו ${issue.ref}`, { className: "seg-tip", sticky: true });
-    }
-    // המקטע הבעייתי (כתום) — מעל הכל
+    // המקטע הבעייתי (כתום) — מצויר לפני הירוק
     if (seg && seg.length > 1) {
       L.polyline(seg, { color: DETOUR, weight: 9, opacity: 1, lineCap: "round", lineJoin: "round" })
         .addTo(grp).bindTooltip(`עיקוף · ${fmt(issue.excessKm)} ק"מ`, { className: "seg-tip", sticky: true });
+    }
+    // קו-ההשוואה (ירוק) — שכבה עליונה, מצויר *מעל* הכתום (כמו בתצוגת-עיר)
+    if (ref && ref.length > 1) {
+      L.polyline(ref, { color: ALT, weight: 6, opacity: 0.95, dashArray: "2 9", lineCap: "round", lineJoin: "round" })
+        .addTo(grp).bindTooltip(`מסלול הקו להשוואה · קו ${issue.ref}`, { className: "seg-tip", sticky: true });
     }
     const fit = (shape && shape.length > 1) ? shape : (seg || []).concat(ref || []);
     if (fit.length) map.fitBounds(L.latLngBounds(fit), { padding: [50, 50], maxZoom: 16 });
