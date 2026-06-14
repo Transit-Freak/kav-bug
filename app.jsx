@@ -725,7 +725,7 @@ function KavBug() {
         fillColor: isAnchor ? MARK : inSeg ? MARK : "#fff",
         fillOpacity: 1,
       }).addTo(grp);
-      dot.bindTooltip(`נקודה ${i + 1}/${N}<br>${verts[i][0].toFixed(5)}, ${verts[i][1].toFixed(5)}`, { direction: "top", offset: [0, -4] });
+      dot.bindTooltip(`נקודה ${i + 1}/${N}<br>${verts[i][0].toFixed(5)}, ${verts[i][1].toFixed(5)}`, { className: "stop-label", direction: "top", offset: [0, -4] });
       dot.on("click", () => pick(i));
     }
     // תחנות — סמנים גדולים יותר עם שם, לחיצה מסמנת את נקודת-הקואורדינטה הקרובה
@@ -736,7 +736,7 @@ function KavBug() {
         radius: 6.5, color: inSeg ? MARK : ROUTE, weight: 3,
         fillColor: inSeg ? MARK : "#fff", fillOpacity: 1,
       }).addTo(grp);
-      m.bindTooltip(`🚏 ${si + 1}. ${s.name}`, { direction: "top", offset: [0, -5] });
+      m.bindTooltip(`🚏 ${si + 1}. ${s.name}`, { className: "stop-label", direction: "top", offset: [0, -5] });
       m.on("click", () => pick(vi));
     });
     // לחיצה בכל מקום על/ליד המסלול → נצמדת לנקודת-הקואורדינטה הקרובה ביותר.
