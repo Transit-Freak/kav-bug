@@ -726,6 +726,15 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
 
 /* ----- חלון "כל הארץ" ----- */
 .country-modal { width: 760px; }
+.country-savings {
+  display: flex; align-items: center; gap: 10px;
+  margin: 10px 0 4px; padding: 11px 14px; border-radius: 12px;
+  background: var(--ok-bg, #e7f6ee); border: 1px solid oklch(0.78 0.12 152 / 0.45);
+}
+.country-savings .cs-ico { font-size: 20px; flex-shrink: 0; }
+.country-savings .cs-text { font-size: 13.5px; line-height: 1.5; color: oklch(0.36 0.10 152); font-weight: 600; }
+.country-savings .cs-text b { color: oklch(0.30 0.12 152); font-weight: 800; }
+.country-savings .cs-note { font-weight: 600; color: var(--ink-faint); font-size: 12px; }
 .country-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0 12px; }
 .country-controls .chip {
   border: 1px solid var(--line-strong); background: transparent; color: var(--ink-soft);

@@ -35,6 +35,36 @@ function polyMid(poly) {
   return poly[Math.floor(poly.length / 2)];
 }
 
+// חצי-כיוון לאורך פוליגון: מניח משולשים מסובבים לפי כיוון הנסיעה (a→b) במרווחים
+// קבועים (~לפי מרחק גאוגרפי), כך שרואים בבירור לאן הקו "זורם". מצויר אל grp הנתון
+// — משותף לתצוגת-העיר ולתצוגת "כל הארץ".
+function drawArrowsAlong(grp, latlngs, color, stepKm) {
+  if (!grp || !latlngs || latlngs.length < 2) return;
+  let acc = stepKm * 0.5; // החץ הראשון מופיע מוקדם
+  for (let i = 1; i < latlngs.length; i++) {
+    const a = latlngs[i - 1], b = latlngs[i];
+    const cos = Math.cos(a[0] * Math.PI / 180);
+    const dyN = b[0] - a[0], dxE = (b[1] - a[1]) * cos;
+    const segKm = Math.sqrt(dyN * dyN + dxE * dxE) * 111.32;
+    if (segKm < 1e-6) continue;
+    acc += segKm;
+    if (acc >= stepKm) {
+      acc = 0;
+      const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      // זווית CSS עם כיוון השעון מציר ה-x (מזרח); ציר-y במסך הפוך ל-lat.
+      const rot = Math.atan2(-dyN, dxE) * 180 / Math.PI;
+      L.marker(mid, {
+        interactive: false, keyboard: false,
+        icon: L.divIcon({
+          className: "",
+          iconSize: [14, 14], iconAnchor: [7, 7],
+          html: `<div class="dir-arrow" style="color:${color};transform:rotate(${rot}deg)">▶</div>`,
+        }),
+      }).addTo(grp);
+    }
+  }
+}
+
 // מרחק (ק"מ) בין שתי נקודות [lat,lng]
 function hav2(a, b) {
   const R = 6371, toRad = (d) => (d * Math.PI) / 180;
@@ -343,23 +373,31 @@ function KavBug() {
     grp.clearLayers();
     if (layerRef.current) layerRef.current.clearLayers(); // לנקות ציור-עיר אם קיים
     const shape = issue.lineShape, seg = issue.seg, ref = issue.refGeom;
-    // כל מסלול הקו (כחול) — רקע/הקשר, כדי שהמקטע לא "ירחף"
+    // כל מסלול הקו (כחול) — רקע/הקשר, כדי שהמקטע לא "ירחף". חצי-כיוון לאורכו
+    // מראים את כיוון הנסיעה (כמו בתצוגת-עיר).
     if (shape && shape.length > 1) {
       L.polyline(shape, { color: ROUTE, weight: 5, opacity: 0.5, lineCap: "round", lineJoin: "round" })
         .addTo(grp).bindTooltip(`קו ${issue.line}${issue.operator ? " · " + issue.operator : ""}`, { className: "seg-tip", sticky: true });
+      drawArrowsAlong(grp, shape, ROUTE, 0.6);
     }
-    // המקטע הבעייתי (כתום) — מצויר לפני הירוק
-    if (seg && seg.length > 1) {
-      L.polyline(seg, { color: DETOUR, weight: 9, opacity: 1, lineCap: "round", lineJoin: "round" })
-        .addTo(grp).bindTooltip(`עיקוף · ${fmt(issue.excessKm)} ק"מ`, { className: "seg-tip", sticky: true });
-    }
-    // קו-ההשוואה (ירוק) — שכבה עליונה, מצויר *מעל* הכתום (כמו בתצוגת-עיר)
+    // קו-ההשוואה (ירוק) — מצויר *תחילה*, כדי שהמקטע הבעייתי הכתום ישב מעליו
+    // (הכתום הוא ההדגשה — אסור שהירוק יסתיר אותו). שניהם חולקים אותן שתי תחנות-
+    // קצה ויוצרים "עדשה" — הכתום הוא הדרך הארוכה, הירוק הדרך הקצרה.
     if (ref && ref.length > 1) {
       L.polyline(ref, { color: ALT, weight: 6, opacity: 0.95, dashArray: "2 9", lineCap: "round", lineJoin: "round" })
         .addTo(grp).bindTooltip(`מסלול הקו להשוואה · קו ${issue.ref}`, { className: "seg-tip", sticky: true });
     }
-    const fit = (shape && shape.length > 1) ? shape : (seg || []).concat(ref || []);
-    if (fit.length) map.fitBounds(L.latLngBounds(fit), { padding: [50, 50], maxZoom: 16 });
+    // המקטע הבעייתי (כתום) — שכבה עליונה, *מעל* הירוק, עם חצי כיוון-נסיעה
+    if (seg && seg.length > 1) {
+      L.polyline(seg, { color: DETOUR, weight: 9, opacity: 1, lineCap: "round", lineJoin: "round" })
+        .addTo(grp).bindTooltip(`עיקוף · ${fmt(issue.excessKm)} ק"מ`, { className: "seg-tip", sticky: true });
+      drawArrowsAlong(grp, seg, "#7a3b00", 0.13); // חצים חומים-כהים על הכתום (ניגודיות)
+    }
+    // מיקוד באזור-העיקוף עצמו (הכתום+הירוק) ולא בכל המסלול הארצי — אחרת הקו הופך
+    // לחוט דק שמרחף במפה ריקה. המסלול הכחול נמשך אל מחוץ למסגרת כהקשר.
+    const focus = (seg || []).concat(ref || []);
+    const fit = focus.length > 1 ? focus : (shape && shape.length > 1 ? shape : focus);
+    if (fit.length > 1) map.fitBounds(L.latLngBounds(fit), { padding: [60, 60], maxZoom: 16 });
     else if (issue.lat != null) map.setView([issue.lat, issue.lng], 15);
     setCountryOpen(false);
     setTimeout(() => map.invalidateSize(), 80);
@@ -431,34 +469,8 @@ function KavBug() {
       return ln.stops.slice(a, b + 1).map((s) => [s.lat, s.lng]);
     };
 
-    // חצי-כיוון לאורך פוליגון: מניח משולשים מסובבים לפי כיוון הנסיעה (a→b)
-    // במרווחים קבועים (~לפי מרחק גאוגרפי), כך שרואים בבירור לאן הקו "זורם".
-    const arrowsAlong = (latlngs, color, stepKm) => {
-      if (!latlngs || latlngs.length < 2) return;
-      let acc = stepKm * 0.5; // החץ הראשון מופיע מוקדם
-      for (let i = 1; i < latlngs.length; i++) {
-        const a = latlngs[i - 1], b = latlngs[i];
-        const cos = Math.cos(a[0] * Math.PI / 180);
-        const dyN = b[0] - a[0], dxE = (b[1] - a[1]) * cos;
-        const segKm = Math.sqrt(dyN * dyN + dxE * dxE) * 111.32;
-        if (segKm < 1e-6) continue;
-        acc += segKm;
-        if (acc >= stepKm) {
-          acc = 0;
-          const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-          // זווית CSS עם כיוון השעון מציר ה-x (מזרח); ציר-y במסך הפוך ל-lat.
-          const rot = Math.atan2(-dyN, dxE) * 180 / Math.PI;
-          L.marker(mid, {
-            interactive: false, keyboard: false,
-            icon: L.divIcon({
-              className: "",
-              iconSize: [14, 14], iconAnchor: [7, 7],
-              html: `<div class="dir-arrow" style="color:${color};transform:rotate(${rot}deg)">▶</div>`,
-            }),
-          }).addTo(grp);
-        }
-      }
-    };
+    // חצי-כיוון לאורך פוליגון (מצויר אל grp דרך העוזר המשותף drawArrowsAlong)
+    const arrowsAlong = (latlngs, color, stepKm) => drawArrowsAlong(grp, latlngs, color, stepKm);
 
     let detourPoly = null, altPoly = null;
     if (line.worst) {
