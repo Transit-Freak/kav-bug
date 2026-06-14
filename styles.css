@@ -647,7 +647,7 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
   font-family: "Spline Sans Mono", monospace; font-size: 11px; font-weight: 600;
 }
 .report-stop.marked .rs-idx { background: var(--high); color: white; }
-.report-stop .rs-name { flex: 1; font-size: 13px; font-weight: 600; color: var(--ink); }
+.report-stop .rs-name { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13px; font-weight: 600; color: var(--ink); }
 .report-stop .rs-id { font-family: "Spline Sans Mono", monospace; font-size: 10.5px; color: var(--ink-faint); }
 .report-actions { display: flex; gap: 8px; padding: 14px 16px; }
 .report-analyze, .report-export {
