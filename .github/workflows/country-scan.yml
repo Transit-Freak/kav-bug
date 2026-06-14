@@ -1,0 +1,53 @@
+name: סריקת כל הארץ (GTFS)
+
+# מוריד את ה-GTFS הארצי ממשרד התחבורה, מריץ את scan-country.js, ומעדכן את
+# country-scan.json / country-scan.csv בריפו. רץ אוטומטית פעם בשבוע + הפעלה ידנית.
+on:
+  schedule:
+    - cron: "0 3 * * 1"   # יום שני, 03:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: country-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: התקנת תלות (fflate)
+        run: npm install fflate --no-save
+
+      - name: הורדת ה-GTFS הארצי ממשרד התחבורה
+        run: |
+          curl -sSL --retry 4 --retry-delay 10 --max-time 600 \
+            -o israel-gtfs.zip \
+            https://gtfs.mot.gov.il/gtfsfiles/israel-public-transportation.zip
+          ls -lh israel-gtfs.zip
+
+      - name: סריקה
+        run: node --max-old-space-size=6144 scan-country.js israel-gtfs.zip country-scan
+
+      - name: ניקוי קובץ ה-GTFS הגדול (לא נשמר בריפו)
+        run: rm -f israel-gtfs.zip
+
+      - name: עדכון הדוח בריפו (רק אם השתנה)
+        run: |
+          git config user.name "kavbug-bot"
+          git config user.email "kavbug-bot@users.noreply.github.com"
+          git add country-scan.json country-scan.csv
+          if git diff --staged --quiet; then
+            echo "אין שינוי בדוח — לא מבצע commit."
+          else
+            git commit -m "עדכון דוח כל-הארץ ($(date -u +%Y-%m-%d))"
+            git push
+          fi

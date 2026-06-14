@@ -8,10 +8,13 @@ const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "
 
 // גרסת האפליקציה (מספור דו-ספרתי: גדולה.קטנה) — מקור-אמת יחיד. כל שחרור מקדם את
 // הספרה הקטנה; הספרה הגדולה עולה באבני-דרך משמעותיות. (עד 1.3.11 היה SemVer.)
-const KAVBUG_VERSION = "3.17";
+const KAVBUG_VERSION = "3.18";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
+  { version: "3.18", date: "14.6.2026", items: [
+    "נוסף כפתור \"כל הארץ\" — מציג דוח ארצי מוכן של כל העיקופים בכל קווי התחבורה בישראל, נטען מיד גם בטלפון (בלי להעלות קובץ). הדוח נסרק מראש ומתעדכן אוטומטית אחת לשבוע מהנתונים הרשמיים של משרד התחבורה. אפשר לסנן לפי סוג-הכרעה ולחפש קו/מפעיל/תחנה.",
+  ] },
   { version: "3.17", date: "14.6.2026", items: [
     "תוקנה תקלת-שווא נדירה: כשמסלול הקו חוצה את עצמו, ההצמדה-לכביש עלולה הייתה \"להיתקע\" ולמדוד מקטע בין שתי תחנות סמוכות כאורך כל הלולאה — ולדווח עיקוף ענק שלא קיים. נוסף שומר שמזהה הצמדה לא-אמינה ומדלג על המקטע.",
   ] },
@@ -258,7 +261,7 @@ function UploadModal({ open, onClose, onProcess, onCancel, job }) {
   );
 }
 
-function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onReport }) {
+function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onReport, onCountry }) {
   const [open, setOpen] = React.useState(false);
   const [whatsNew, setWhatsNew] = React.useState(false);
   const ref = React.useRef(null);
@@ -291,6 +294,9 @@ function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onRepo
       </div>
       <div className="spacer"></div>
       <button className="icon-btn" onClick={onInfo} title="איך זה עובד">?</button>
+      <button className="report-btn" onClick={onCountry} title="דוח ארצי מוכן — כל העיקופים בארץ">
+        <span className="u-ico">🌍</span>כל הארץ
+      </button>
       <button className="report-btn" onClick={onReport} title="דווח על קו עם תקלה שלא זוהתה">
         <span className="u-ico">⚑</span>דווח על תקלה
       </button>
@@ -355,6 +361,78 @@ function WhatsNewModal({ open, onClose }) {
         <p className="modal-credit">
           נוצר על ידי <b>שלמה הרטמן</b> בעזרת קלוד · <a href="mailto:shlomihartman@gmail.com">shlomihartman@gmail.com</a>
         </p>
+      </div>
+    </div>
+  );
+}
+
+// חלון "כל הארץ" — טוען דוח ארצי מוכן (country-scan.json) שנסרק מראש ע"י
+// scan-country.js (ומתעדכן אוטומטית ע"י GitHub Action). מאפשר לראות את כל
+// העיקופים בארץ מהטלפון בלי לעבד GTFS — פשוט קורא תוצאה מוכנה.
+function CountryModal({ open, onClose }) {
+  const [data, setData] = React.useState(null);
+  const [err, setErr] = React.useState(null);
+  const [filter, setFilter] = React.useState("אמיתי");
+  const [q, setQ] = React.useState("");
+  React.useEffect(() => {
+    if (!open || data || err) return;
+    fetch("country-scan.json", { cache: "no-store" })
+      .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(setData)
+      .catch((e) => setErr(e.message || String(e)));
+  }, [open, data, err]);
+  if (!open) return null;
+  const issues = (data && data.issues) || [];
+  const qn = q.trim();
+  const shown = issues.filter((i) =>
+    (filter === "הכל" || i.verdict === filter) &&
+    (!qn || ((i.line || "") + " " + (i.operator || "") + " " + (i.from || "") + " " + (i.to || "")).includes(qn))
+  );
+  const count = (v) => (v === "הכל" ? (data ? data.totalIssues : 0) : (data && data.byVerdict && data.byVerdict[v]) || 0);
+  const vClass = (v) => v === "אמיתי" ? "real" : v === "רעש" ? "noise" : v === "ספק" ? "doubt" : "incomp";
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal country-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>כל הארץ</h2>
+          <button className="x" onClick={onClose}>×</button>
+        </div>
+        {!data && !err && <p className="modal-hint">טוען דוח ארצי…</p>}
+        {err && <div className="job-error">לא הצלחתי לטעון את הדוח הארצי ({err}). ייתכן שהוא טרם נוצר.</div>}
+        {data && (
+          <>
+            <p className="modal-hint">
+              {Number(data.totalLines).toLocaleString("he-IL")} קווים נסרקו · <b>{data.realCount}</b> עיקופים אמיתיים
+              {data.generatedAt ? " · עודכן " + new Date(data.generatedAt).toLocaleDateString("he-IL") : ""}
+            </p>
+            <div className="country-controls">
+              {["אמיתי", "ספק", "לא ניתן להשוואה", "רעש", "הכל"].map((v) => (
+                <button key={v} className={"chip chip-" + vClass(v) + (filter === v ? " on" : "")} onClick={() => setFilter(v)}>
+                  {v} <span className="chip-n">{count(v)}</span>
+                </button>
+              ))}
+              <input className="country-search" value={q} placeholder="חיפוש קו / מפעיל / תחנה…" onChange={(e) => setQ(e.target.value)} />
+            </div>
+            <div className="country-table">
+              <table>
+                <thead><tr><th>קו</th><th>מפעיל</th><th>מקטע</th><th>מיותר</th><th>מול</th><th>הכרעה</th></tr></thead>
+                <tbody>
+                  {shown.map((i, k) => (
+                    <tr key={k}>
+                      <td className="num">{i.line}</td>
+                      <td>{i.operator}</td>
+                      <td className="seg">{i.from} → {i.to}</td>
+                      <td className="num">{i.excessKm} ק"מ</td>
+                      <td className="num">{i.ref}</td>
+                      <td><span className={"vd vd-" + vClass(i.verdict)}>{i.verdict}</span></td>
+                    </tr>
+                  ))}
+                  {shown.length === 0 && <tr><td className="empty" colSpan={6}>אין תוצאות</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1571,4 +1649,4 @@ function Panel({ city, activeIdx, setActiveIdx, aiReview }) {
   );
 }
 
-Object.assign(window, { TopBar, Panel, ReportPanel, Stats, ProblemCard, UploadModal, InfoModal, CITY_PRESETS, fmt, SEV_LABEL, KAVBUG_VERSION, runAIVerdict, buildVerdictPrompt, dirLabel, aiComplete, aiAvailable, fallbackVerdict, stripArabic });
+Object.assign(window, { TopBar, Panel, ReportPanel, Stats, ProblemCard, UploadModal, InfoModal, CountryModal, CITY_PRESETS, fmt, SEV_LABEL, KAVBUG_VERSION, runAIVerdict, buildVerdictPrompt, dirLabel, aiComplete, aiAvailable, fallbackVerdict, stripArabic });

@@ -723,6 +723,41 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
   -webkit-overflow-scrolling: touch;
 }
 @keyframes pop { from { transform: scale(.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* ----- חלון "כל הארץ" ----- */
+.country-modal { width: 760px; }
+.country-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0 12px; }
+.country-controls .chip {
+  border: 1px solid var(--line-strong); background: transparent; color: var(--ink-soft);
+  border-radius: 999px; padding: 5px 11px; font-family: "Heebo", sans-serif; font-size: 13px;
+  font-weight: 600; cursor: pointer; transition: background .12s, border-color .12s;
+}
+.country-controls .chip:hover { background: var(--line); }
+.country-controls .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.country-controls .chip .chip-n { opacity: .7; font-weight: 700; }
+.country-controls .chip.on .chip-n { opacity: .9; }
+.country-search {
+  flex: 1; min-width: 140px; height: 34px; border: 1px solid var(--line-strong);
+  border-radius: 10px; padding: 0 10px; font-family: "Assistant", sans-serif; font-size: 14px;
+  background: var(--surface); color: var(--ink);
+}
+.country-table { overflow-x: auto; max-height: 60dvh; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; }
+.country-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.country-table thead th {
+  position: sticky; top: 0; background: var(--bg); text-align: right; font-weight: 800;
+  color: var(--ink-soft); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+.country-table td { padding: 7px 10px; border-bottom: 1px solid var(--line); color: var(--ink); vertical-align: top; }
+.country-table tbody tr:hover { background: var(--bg); }
+.country-table td.num { font-family: "Spline Sans Mono", monospace; white-space: nowrap; }
+.country-table td.seg { line-height: 1.4; }
+.country-table td.empty { text-align: center; color: var(--ink-faint); padding: 22px; }
+.vd { display: inline-block; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.vd-real { background: var(--high-bg); color: var(--high); }
+.vd-noise { background: var(--line); color: var(--ink-soft); }
+.vd-doubt { background: var(--med-bg); color: var(--med); }
+.vd-incomp { background: var(--bg); color: var(--ink-faint); }
+@media (max-width: 560px) { .country-modal { width: 100%; } .country-table { font-size: 12px; } }
 .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .modal-head h2 { font-family: "Heebo", sans-serif; font-size: 21px; font-weight: 800; margin: 0; }
 .modal-head .x {
