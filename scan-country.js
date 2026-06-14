@@ -264,9 +264,30 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       // גאומטריה לציור על המפה: seg = מקטע הקו הנבדק (הכתום/העיקוף), ref = מסלול
       // קו-ההשוואה (הירוק). מעוגל ל-5 ספרות. round5 משאיר את הקובץ קומפקטי.
       const round5 = (g) => g && g.map((p) => [+(+p[0]).toFixed(5), +(+p[1]).toFixed(5)]);
+      const round4 = (g) => g && g.map((p) => [+(+p[0]).toFixed(4), +(+p[1]).toFixed(4)]); // ~11 מ' — מספיק לרקע
+      // דילול-נקודות: משמיט נקודות קרובות (m2 = מרחק² בק"מ²-בקירוב) לחיסכון נפח
+      // בלי לפגוע בצורת הכביש. שומר תמיד ראשונה ואחרונה.
+      const thin = (g, m2) => {
+        if (!g || g.length < 3) return g;
+        const out = [g[0]]; let last = g[0];
+        for (let k = 1; k < g.length - 1; k++) {
+          const dy = (g[k][0] - last[0]) * 111, dx = (g[k][1] - last[1]) * 89;
+          if (dy * dy + dx * dx >= m2) { out.push(g[k]); last = g[k]; }
+        }
+        out.push(g[g.length - 1]); return out;
+      };
+      // תקרת-נקודות (לקווים בין-עירוניים ארוכים) ע"י דגימה אחידה — שומר צורת-מסלול
+      // מספקת לרקע. (העיקוף עצמו, seg, נשמר בפירוט מלא.)
+      const cap = (g, n) => {
+        if (!g || g.length <= n) return g;
+        const out = []; const step = (g.length - 1) / (n - 1);
+        for (let k = 0; k < n; k++) out.push(g[Math.round(k * step)]);
+        return out;
+      };
       const segIdx = it.segIdx && it.segIdx[0];
       const seg = (d.lineGeometry && d.lineGeometry.length > 1) ? d.lineGeometry
         : (L._geom && segIdx != null && L._geom[segIdx]) || null;
+      const lineShape = cap(thin(L.shape, 0.0009), 130); // דילול ~30 מ' + תקרת 130 נק' (רקע)
       issues.push({
         line: L.number, operator: L.operator, type: it.type,
         from: it.from && it.from.name, to: it.to && it.to.name,
@@ -274,7 +295,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
         ref: it.refNumber, excessKm: +(it.km || d.excessKm || 0).toFixed(3),
         ratio: d.ratio != null ? +d.ratio.toFixed(2) : null,
         verdict: vr.verdict, reason: vr.reason || "",
-        seg: round5(seg), refGeom: round5(it.refGeom),
+        seg: round5(seg), refGeom: round5(it.refGeom), lineShape: round4(lineShape),
       });
     }
   }
