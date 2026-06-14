@@ -300,6 +300,7 @@ function KavBug() {
 
   const mapRef = React.useRef(null);
   const layerRef = React.useRef(null);
+  const countryLayerRef = React.useRef(null);
   const tileRef = React.useRef(null);
   const mapEl = React.useRef(null);
 
@@ -310,6 +311,7 @@ function KavBug() {
     }).setView([31.252, 34.805], 12);
     L.control.zoom({ position: "bottomleft" }).addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
+    countryLayerRef.current = L.layerGroup().addTo(map); // שכבה נפרדת לבחירה מ"כל הארץ"
     mapRef.current = map;
     setTimeout(() => map.invalidateSize(), 60);
     const onResize = () => map.invalidateSize();
@@ -332,6 +334,29 @@ function KavBug() {
     tileRef.current.addTo(map);
     if (tileRef.current.setZIndex) tileRef.current.setZIndex(0);
   }, [basemap]);
+
+  // בחירת עיקוף מהדוח הארצי ("כל הארץ") — מצייר את המקטע (כתום) ואת קו-ההשוואה
+  // (ירוק) על המפה בשכבה נפרדת, ממקד אליהם, וסוגר את החלון. עובד גם בלי עיר טעונה.
+  const showCountryIssue = (issue) => {
+    const map = mapRef.current, grp = countryLayerRef.current;
+    if (!map || !grp || !issue) return;
+    grp.clearLayers();
+    if (layerRef.current) layerRef.current.clearLayers(); // לנקות ציור-עיר אם קיים
+    const seg = issue.seg, ref = issue.refGeom;
+    if (seg && seg.length > 1) {
+      L.polyline(seg, { color: DETOUR, weight: 9, opacity: 1, lineCap: "round", lineJoin: "round" })
+        .addTo(grp).bindTooltip(`קו ${issue.line} · עיקוף ${fmt(issue.excessKm)} ק"מ`, { className: "seg-tip", sticky: true });
+    }
+    if (ref && ref.length > 1) {
+      L.polyline(ref, { color: ALT, weight: 6, opacity: 0.95, dashArray: "2 9", lineCap: "round", lineJoin: "round" })
+        .addTo(grp).bindTooltip(`מסלול הקו להשוואה · קו ${issue.ref}`, { className: "seg-tip", sticky: true });
+    }
+    const all = (seg || []).concat(ref || []);
+    if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [60, 60], maxZoom: 16 });
+    else if (issue.lat != null) map.setView([issue.lat, issue.lng], 15);
+    setCountryOpen(false);
+    setTimeout(() => map.invalidateSize(), 80);
+  };
 
   // ציור — רק הקו הנבחר (הבעייתי), עם הדגשת המקטע הבעייתי
   React.useEffect(() => {
@@ -1099,7 +1124,7 @@ ${engineFacts}
       />
       <UploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} onProcess={processFile} onCancel={cancelJob} job={job} />
       <InfoModal open={infoOpen} onClose={() => setInfoOpen(false)} />
-      <CountryModal open={countryOpen} onClose={() => setCountryOpen(false)} />
+      <CountryModal open={countryOpen} onClose={() => setCountryOpen(false)} onPick={showCountryIssue} />
       <div className="body" style={{ "--panel-w": panelWidth + "px" }}>
         {reportMode && city ? (
           <ReportPanel

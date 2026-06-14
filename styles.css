@@ -749,6 +749,10 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
 }
 .country-table td { padding: 7px 10px; border-bottom: 1px solid var(--line); color: var(--ink); vertical-align: top; }
 .country-table tbody tr:hover { background: var(--bg); }
+.country-table tbody tr.clickable { cursor: pointer; }
+.country-table tbody tr.clickable:hover { background: var(--brand-soft); }
+.country-table .map-ico { opacity: 0; font-size: 12px; transition: opacity .12s; }
+.country-table tr.clickable:hover .map-ico { opacity: .8; }
 .country-table td.num { font-family: "Spline Sans Mono", monospace; white-space: nowrap; }
 .country-table td.seg { line-height: 1.4; }
 .country-table td.empty { text-align: center; color: var(--ink-faint); padding: 22px; }
