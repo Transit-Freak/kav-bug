@@ -8,18 +8,13 @@ const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "
 
 // גרסת האפליקציה (מספור דו-ספרתי: גדולה.קטנה) — מקור-אמת יחיד. כל שחרור מקדם את
 // הספרה הקטנה; הספרה הגדולה עולה באבני-דרך משמעותיות. (עד 1.3.11 היה SemVer.)
-const KAVBUG_VERSION = "3.20";
+const KAVBUG_VERSION = "4.0";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
-  { version: "3.20", date: "14.6.2026", items: [
-    "בלחיצה על קו בדוח \"כל הארץ\" מוצג עכשיו *כל מסלול הקו* על המפה (כחול) ולא רק המקטע — כך הוא לא \"מרחף\". המקטע הבעייתי בכתום, קו-ההשוואה בירוק, והמפה ממוקדת לכל הקו.",
-  ] },
-  { version: "3.19", date: "14.6.2026", items: [
-    "בדוח \"כל הארץ\" אפשר עכשיו ללחוץ על כל שורה והעיקוף יוצג על המפה — המקטע הבעייתי בכתום ומסלול הקו להשוואה בירוק, עם מיקוד אוטומטי לאזור.",
-  ] },
-  { version: "3.18", date: "14.6.2026", items: [
-    "נוסף כפתור \"כל הארץ\" — מציג דוח ארצי מוכן של כל העיקופים בכל קווי התחבורה בישראל, נטען מיד גם בטלפון (בלי להעלות קובץ). הדוח נסרק מראש ומתעדכן אוטומטית אחת לשבוע מהנתונים הרשמיים של משרד התחבורה. אפשר לסנן לפי סוג-הכרעה ולחפש קו/מפעיל/תחנה.",
+  { version: "4.0", date: "14.6.2026", items: [
+    "תצוגת \"כל הארץ\" — דוח מוכן של כל העיקופים בכל קווי התחבורה בישראל, נטען מיד גם בטלפון (בלי להעלות קובץ). נסרק מראש ומתעדכן אוטומטית אחת לשבוע מהנתונים הרשמיים של משרד התחבורה. אפשר לסנן, לחפש, וללחוץ על כל שורה כדי לראות את הקו על המפה — כל מסלול הקו בכחול, המקטע הבעייתי בכתום, וקו-ההשוואה בירוק.",
+    "חישוב בזבוז יומי: לכל עיקוף מוצג כמה ק\"מ הוא מבזבז ביום עמוס (העיקוף × מספר הנסיעות ביום), וגם סך-הכל ארצי. אפשר למיין לפי זה.",
   ] },
   { version: "3.17", date: "14.6.2026", items: [
     "תוקנה תקלת-שווא נדירה: כשמסלול הקו חוצה את עצמו, ההצמדה-לכביש עלולה הייתה \"להיתקע\" ולמדוד מקטע בין שתי תחנות סמוכות כאורך כל הלולאה — ולדווח עיקוף ענק שלא קיים. נוסף שומר שמזהה הצמדה לא-אמינה ומדלג על המקטע.",
@@ -380,6 +375,7 @@ function CountryModal({ open, onClose, onPick }) {
   const [err, setErr] = React.useState(null);
   const [filter, setFilter] = React.useState("אמיתי");
   const [q, setQ] = React.useState("");
+  const [sort, setSort] = React.useState("waste"); // "waste" = מבזבז/יום | "excess" = ק"מ מיותרים
   React.useEffect(() => {
     if (!open || data || err) return;
     fetch("country-scan.json", { cache: "no-store" })
@@ -393,7 +389,7 @@ function CountryModal({ open, onClose, onPick }) {
   const shown = issues.filter((i) =>
     (filter === "הכל" || i.verdict === filter) &&
     (!qn || ((i.line || "") + " " + (i.operator || "") + " " + (i.from || "") + " " + (i.to || "")).includes(qn))
-  );
+  ).sort((a, b) => sort === "excess" ? (b.excessKm - a.excessKm) : ((b.wasteDayKm || 0) - (a.wasteDayKm || 0)));
   const count = (v) => (v === "הכל" ? (data ? data.totalIssues : 0) : (data && data.byVerdict && data.byVerdict[v]) || 0);
   const vClass = (v) => v === "אמיתי" ? "real" : v === "רעש" ? "noise" : v === "ספק" ? "doubt" : "incomp";
   return (
@@ -409,6 +405,7 @@ function CountryModal({ open, onClose, onPick }) {
           <>
             <p className="modal-hint">
               {Number(data.totalLines).toLocaleString("he-IL")} קווים נסרקו · <b>{data.realCount}</b> עיקופים אמיתיים
+              {data.totalWasteDayKm != null ? <> · <b>{Number(data.totalWasteDayKm).toLocaleString("he-IL")} ק"מ מבוזבזים ביום עמוס</b></> : null}
               {data.generatedAt ? " · עודכן " + new Date(data.generatedAt).toLocaleDateString("he-IL") : ""}
               {onPick ? " · לחצו על שורה כדי להציג על המפה 🗺️" : ""}
             </p>
@@ -418,11 +415,14 @@ function CountryModal({ open, onClose, onPick }) {
                   {v} <span className="chip-n">{count(v)}</span>
                 </button>
               ))}
+              <button className={"chip chip-sort" + (sort === "waste" ? " on" : "")} onClick={() => setSort(sort === "waste" ? "excess" : "waste")}>
+                {sort === "waste" ? "↓ מיון: מבזבז/יום" : "↓ מיון: ק\"מ מיותרים"}
+              </button>
               <input className="country-search" value={q} placeholder="חיפוש קו / מפעיל / תחנה…" onChange={(e) => setQ(e.target.value)} />
             </div>
             <div className="country-table">
               <table>
-                <thead><tr><th>קו</th><th>מפעיל</th><th>מקטע</th><th>מיותר</th><th>מול</th><th>הכרעה</th></tr></thead>
+                <thead><tr><th>קו</th><th>מפעיל</th><th>מקטע</th><th>מיותר</th><th>מבזבז/יום</th><th>מול</th><th>הכרעה</th></tr></thead>
                 <tbody>
                   {shown.map((i, k) => {
                     const hasGeo = (i.seg && i.seg.length > 1) || (i.refGeom && i.refGeom.length > 1);
@@ -434,12 +434,13 @@ function CountryModal({ open, onClose, onPick }) {
                         <td>{i.operator}</td>
                         <td className="seg">{i.from} → {i.to}{onPick && hasGeo ? <span className="map-ico"> 🗺️</span> : null}</td>
                         <td className="num">{i.excessKm} ק"מ</td>
+                        <td className="num waste" title={i.tripsDay ? i.tripsDay + " נסיעות ביום עמוס" : ""}>{i.wasteDayKm != null ? i.wasteDayKm + " ק\"מ" : "—"}</td>
                         <td className="num">{i.ref}</td>
                         <td><span className={"vd vd-" + vClass(i.verdict)}>{i.verdict}</span></td>
                       </tr>
                     );
                   })}
-                  {shown.length === 0 && <tr><td className="empty" colSpan={6}>אין תוצאות</td></tr>}
+                  {shown.length === 0 && <tr><td className="empty" colSpan={7}>אין תוצאות</td></tr>}
                 </tbody>
               </table>
             </div>
