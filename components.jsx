@@ -8,10 +8,13 @@ const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "
 
 // גרסת האפליקציה (מספור דו-ספרתי: גדולה.קטנה) — מקור-אמת יחיד. כל שחרור מקדם את
 // הספרה הקטנה; הספרה הגדולה עולה באבני-דרך משמעותיות. (עד 1.3.11 היה SemVer.)
-const KAVBUG_VERSION = "3.18";
+const KAVBUG_VERSION = "3.19";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
+  { version: "3.19", date: "14.6.2026", items: [
+    "בדוח \"כל הארץ\" אפשר עכשיו ללחוץ על כל שורה והעיקוף יוצג על המפה — המקטע הבעייתי בכתום ומסלול הקו להשוואה בירוק, עם מיקוד אוטומטי לאזור.",
+  ] },
   { version: "3.18", date: "14.6.2026", items: [
     "נוסף כפתור \"כל הארץ\" — מציג דוח ארצי מוכן של כל העיקופים בכל קווי התחבורה בישראל, נטען מיד גם בטלפון (בלי להעלות קובץ). הדוח נסרק מראש ומתעדכן אוטומטית אחת לשבוע מהנתונים הרשמיים של משרד התחבורה. אפשר לסנן לפי סוג-הכרעה ולחפש קו/מפעיל/תחנה.",
   ] },
@@ -369,7 +372,7 @@ function WhatsNewModal({ open, onClose }) {
 // חלון "כל הארץ" — טוען דוח ארצי מוכן (country-scan.json) שנסרק מראש ע"י
 // scan-country.js (ומתעדכן אוטומטית ע"י GitHub Action). מאפשר לראות את כל
 // העיקופים בארץ מהטלפון בלי לעבד GTFS — פשוט קורא תוצאה מוכנה.
-function CountryModal({ open, onClose }) {
+function CountryModal({ open, onClose, onPick }) {
   const [data, setData] = React.useState(null);
   const [err, setErr] = React.useState(null);
   const [filter, setFilter] = React.useState("אמיתי");
@@ -404,6 +407,7 @@ function CountryModal({ open, onClose }) {
             <p className="modal-hint">
               {Number(data.totalLines).toLocaleString("he-IL")} קווים נסרקו · <b>{data.realCount}</b> עיקופים אמיתיים
               {data.generatedAt ? " · עודכן " + new Date(data.generatedAt).toLocaleDateString("he-IL") : ""}
+              {onPick ? " · לחצו על שורה כדי להציג על המפה 🗺️" : ""}
             </p>
             <div className="country-controls">
               {["אמיתי", "ספק", "לא ניתן להשוואה", "רעש", "הכל"].map((v) => (
@@ -417,16 +421,21 @@ function CountryModal({ open, onClose }) {
               <table>
                 <thead><tr><th>קו</th><th>מפעיל</th><th>מקטע</th><th>מיותר</th><th>מול</th><th>הכרעה</th></tr></thead>
                 <tbody>
-                  {shown.map((i, k) => (
-                    <tr key={k}>
-                      <td className="num">{i.line}</td>
-                      <td>{i.operator}</td>
-                      <td className="seg">{i.from} → {i.to}</td>
-                      <td className="num">{i.excessKm} ק"מ</td>
-                      <td className="num">{i.ref}</td>
-                      <td><span className={"vd vd-" + vClass(i.verdict)}>{i.verdict}</span></td>
-                    </tr>
-                  ))}
+                  {shown.map((i, k) => {
+                    const hasGeo = (i.seg && i.seg.length > 1) || (i.refGeom && i.refGeom.length > 1);
+                    return (
+                      <tr key={k} className={onPick && hasGeo ? "clickable" : ""}
+                        onClick={onPick && hasGeo ? () => onPick(i) : undefined}
+                        title={onPick && hasGeo ? "הצג על המפה" : ""}>
+                        <td className="num">{i.line}</td>
+                        <td>{i.operator}</td>
+                        <td className="seg">{i.from} → {i.to}{onPick && hasGeo ? <span className="map-ico"> 🗺️</span> : null}</td>
+                        <td className="num">{i.excessKm} ק"מ</td>
+                        <td className="num">{i.ref}</td>
+                        <td><span className={"vd vd-" + vClass(i.verdict)}>{i.verdict}</span></td>
+                      </tr>
+                    );
+                  })}
                   {shown.length === 0 && <tr><td className="empty" colSpan={6}>אין תוצאות</td></tr>}
                 </tbody>
               </table>

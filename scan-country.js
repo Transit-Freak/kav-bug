@@ -261,6 +261,12 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       const d = it.diag || {};
       const vr = d.kind ? verdictOf(d) : { verdict: "(אין-אבחון)", reason: "" };
       byVerdict[vr.verdict] = (byVerdict[vr.verdict] || 0) + 1;
+      // גאומטריה לציור על המפה: seg = מקטע הקו הנבדק (הכתום/העיקוף), ref = מסלול
+      // קו-ההשוואה (הירוק). מעוגל ל-5 ספרות. round5 משאיר את הקובץ קומפקטי.
+      const round5 = (g) => g && g.map((p) => [+(+p[0]).toFixed(5), +(+p[1]).toFixed(5)]);
+      const segIdx = it.segIdx && it.segIdx[0];
+      const seg = (d.lineGeometry && d.lineGeometry.length > 1) ? d.lineGeometry
+        : (L._geom && segIdx != null && L._geom[segIdx]) || null;
       issues.push({
         line: L.number, operator: L.operator, type: it.type,
         from: it.from && it.from.name, to: it.to && it.to.name,
@@ -268,6 +274,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
         ref: it.refNumber, excessKm: +(it.km || d.excessKm || 0).toFixed(3),
         ratio: d.ratio != null ? +d.ratio.toFixed(2) : null,
         verdict: vr.verdict, reason: vr.reason || "",
+        seg: round5(seg), refGeom: round5(it.refGeom),
       });
     }
   }
