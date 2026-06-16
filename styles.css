@@ -445,6 +445,35 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
 .empty h2 { font-family: "Heebo", sans-serif; font-size: 20px; margin: 0 0 8px; }
 .empty p { color: var(--ink-soft); font-size: 14px; line-height: 1.5; font-weight: 500; }
 
+/* פאנל עיקוף נבחר מ"כל הארץ" */
+.ci-panel { padding: 16px 18px; overflow-y: auto; }
+.ci-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.ci-back {
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--brand-ink);
+  border-radius: 9px; padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.ci-back:hover { background: var(--brand-soft); border-color: var(--brand); }
+.ci-x {
+  border: 0; background: var(--surface-2); width: 30px; height: 30px; border-radius: 8px;
+  font-size: 18px; line-height: 1; color: var(--ink-soft); cursor: pointer;
+}
+.ci-x:hover { background: var(--line); }
+.ci-head { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; margin-bottom: 4px; }
+.ci-line { font-family: "Heebo", sans-serif; font-size: 24px; font-weight: 800; color: var(--ink); }
+.ci-op { font-size: 14px; color: var(--ink-soft); font-weight: 600; }
+.ci-seg { font-size: 15px; color: var(--ink); font-weight: 600; line-height: 1.45; margin-bottom: 12px; overflow-wrap: anywhere; }
+.ci-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.ci-ref { font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+.ci-metrics { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.ci-m {
+  flex: 1; min-width: 120px; background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px;
+}
+.ci-m b { font-family: "Spline Sans Mono", monospace; font-size: 22px; font-weight: 600; color: var(--ink); }
+.ci-m span { font-size: 12.5px; color: var(--ink-soft); font-weight: 600; }
+.ci-reason { font-size: 14px; line-height: 1.6; color: var(--ink-soft); font-weight: 500; margin: 0 0 14px; overflow-wrap: anywhere; }
+.ci-hint { font-size: 12.5px; line-height: 1.6; color: var(--ink-faint); font-weight: 500; margin: 0; }
+
 /* scrollbar */
 .cards::-webkit-scrollbar { width: 9px; }
 .cards::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 20px; border: 2px solid var(--surface); }

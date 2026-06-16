@@ -240,6 +240,41 @@ function divergentRuns(polyA, polyB, tol) {
   return out;
 }
 
+// פאנל-צד לעיקוף שנבחר מ"כל הארץ": מציג את פרטי הקו/המקטע/ההכרעה במקום מסך
+// "בחרו עיר" (שמדבר על סריקה/העלאת-קובץ ובלבל). fmt/הצבעים מגיעים כגלובלים
+// מ-components.jsx (שנטען לפני app.jsx).
+function CountryIssuePanel({ issue, onBack, onClose }) {
+  const vc = issue.verdict === "אמיתי" ? "real" : issue.verdict === "רעש" ? "noise"
+    : issue.verdict === "ספק" ? "doubt" : issue.verdict === "כיסוי לגיטימי" ? "cover" : "incomp";
+  return (
+    <aside className="panel">
+      <div className="ci-panel">
+        <div className="ci-top">
+          <button className="ci-back" onClick={onBack} title="חזרה לרשימת כל הארץ">← כל הארץ</button>
+          <button className="ci-x" onClick={onClose} title="סגירה">✕</button>
+        </div>
+        <div className="ci-head">
+          <span className="ci-line">קו {issue.line}</span>
+          {issue.operator ? <span className="ci-op">{issue.operator}</span> : null}
+        </div>
+        <div className="ci-seg">{issue.from} → {issue.to}</div>
+        <div className="ci-badges">
+          <span className={"vd vd-" + vc}>{issue.verdict}</span>
+          {issue.ref ? <span className="ci-ref">מול קו {issue.ref}</span> : null}
+        </div>
+        <div className="ci-metrics">
+          <div className="ci-m"><b>{fmt(issue.excessKm)}</b><span>ק"מ מיותרים</span></div>
+          {issue.wasteDayKm != null
+            ? <div className="ci-m"><b>{Number(issue.wasteDayKm).toLocaleString("he-IL")}</b><span>ק"מ מבוזבזים ביום עמוס</span></div>
+            : null}
+        </div>
+        {issue.reason ? <p className="ci-reason">{issue.reason}</p> : null}
+        <p className="ci-hint">המקטע מסומן על המפה: <b style={{ color: "#ef8a17" }}>כתום</b> = החלק המיותר · <b style={{ color: "#1f9d57" }}>ירוק</b> = מסלול-ההשוואה · <b style={{ color: "#2563eb" }}>כחול</b> = מסלול הקו.</p>
+      </div>
+    </aside>
+  );
+}
+
 function KavBug() {
   const D = window.KavBugData;
   const [query, setQuery] = React.useState("");
@@ -253,6 +288,7 @@ function KavBug() {
   const [infoOpen, setInfoOpen] = React.useState(false);
   const [countryOpen, setCountryOpen] = React.useState(false);
   const [countryCity, setCountryCity] = React.useState(null); // עיר התחלתית לתצוגת "כל הארץ"
+  const [countryIssue, setCountryIssue] = React.useState(null); // העיקוף שנבחר מ"כל הארץ" (לפאנל הצדדי)
 
   // מצב "דווח על תקלה"
   const [reportMode, setReportMode] = React.useState(false);
@@ -464,6 +500,7 @@ function KavBug() {
     const fit = (shape && shape.length > 1) ? shape : (seg || []).concat(ref || []);
     if (fit.length) map.fitBounds(L.latLngBounds(fit), { padding: [50, 50], maxZoom: 16 });
     else if (issue.lat != null) map.setView([issue.lat, issue.lng], 15);
+    setCountryIssue(issue); // הצגת פרטי-העיקוף בפאנל הצדדי (במקום "בחרו עיר")
     setCountryOpen(false);
     setTimeout(() => map.invalidateSize(), 80);
   };
@@ -782,7 +819,7 @@ function KavBug() {
     setActiveIdx(idx >= 0 ? idx : null);
   }, [city]);
 
-  const selectCity = (name) => { setCityName(name); setActiveIdx(null); setQuery(""); };
+  const selectCity = (name) => { setCityName(name); setActiveIdx(null); setQuery(""); setCountryIssue(null); };
 
   // ── פאנל צד בעל רוחב משתנה (Resizable Split) ──
   // הפאנל מעוגן לימין (RTL); רוחבו = רוחב-החלון פחות מיקום-העכבר האופקי.
@@ -1120,6 +1157,7 @@ ${engineFacts}
   const enterReport = () => {
     setReportMode(true);
     setActiveIdx(null);
+    setCountryIssue(null);
     setReportLineNum(""); setReportVariant(0);
     setMarkFrom(null); setMarkTo(null);
     setReportText(""); setReportAnalysis({ status: "idle" });
@@ -1151,6 +1189,8 @@ ${engineFacts}
             onAnalyze={analyzeReport} analysis={reportAnalysis}
             onExport={exportReport} onEmail={emailReport} onExit={exitReport}
           />
+        ) : countryIssue ? (
+          <CountryIssuePanel issue={countryIssue} onBack={() => setCountryOpen(true)} onClose={() => setCountryIssue(null)} />
         ) : city ? (
           <Panel city={city} activeIdx={activeIdx} setActiveIdx={setActiveIdx} aiReview={aiReview} />
         ) : (
