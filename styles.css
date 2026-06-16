@@ -525,6 +525,22 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
   width: 18px; height: 18px; border-radius: 50%; background: var(--brand-soft);
   color: var(--brand); display: grid; place-items: center; font-weight: 800; flex-shrink: 0;
 }
+.suggest-country {
+  color: var(--brand-ink) !important; font-weight: 700 !important; font-size: 13px !important; gap: 9px !important;
+}
+.suggest-country .plus { width: 18px; height: 18px; display: grid; place-items: center; flex-shrink: 0; background: none; }
+.suggest-upload { color: var(--ink-soft) !important; font-weight: 600 !important; }
+
+/* ----- חיפוש-עיר בתוך "כל הארץ" ----- */
+.country-city { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 10px; }
+.country-cityinput {
+  flex: 1; min-width: 160px; height: 38px; border: 1.5px solid var(--line-strong);
+  border-radius: 10px; padding: 0 12px; font-family: "Assistant", sans-serif; font-size: 14px;
+  background: var(--surface); color: var(--ink);
+}
+.country-cityinput:focus { outline: none; border-color: var(--brand); }
+.country-citybtn { width: auto !important; height: 38px; padding: 0 16px; }
+.country-controls .chip-city.on { background: var(--high-bg); border-color: var(--high); color: var(--high); }
 
 /* ----- מודאל הסבר ----- */
 .info-modal .how { display: flex; flex-direction: column; gap: 16px; margin: 6px 0 4px; }

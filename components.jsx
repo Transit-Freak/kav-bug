@@ -8,10 +8,13 @@ const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "
 
 // גרסת האפליקציה (מספור דו-ספרתי: גדולה.קטנה) — מקור-אמת יחיד. כל שחרור מקדם את
 // הספרה הקטנה; הספרה הגדולה עולה באבני-דרך משמעותיות. (עד 1.3.11 היה SemVer.)
-const KAVBUG_VERSION = "4.1";
+const KAVBUG_VERSION = "4.2";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
+  { version: "4.2", date: "16.6.2026", items: [
+    "חיפוש עיר ב\"כל הארץ\": מקלידים שם-עיר (בחיפוש הראשי או בתוך החלון) ומקבלים מיד את כל העיקופים של אותה עיר מהדוח המוכן — כולל הבזבוז היומי, ולחיצה להצגה על המפה — *בלי להעלות קובץ GTFS*.",
+  ] },
   { version: "4.1", date: "14.6.2026", items: [
     "תוקן: במצב \"דווח על תקלה\" שמות-תחנות ארוכים גלשו מחוץ למקומם (בעיקר במחשב) — עכשיו הם נשברים לשורה במקום לחרוג.",
   ] },
@@ -314,7 +317,9 @@ function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onRepo
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && matches[0]) { onSelect(matches[0]); setOpen(false); }
+            if (e.key !== "Enter" || !q) return;
+            if (matches[0]) { onSelect(matches[0]); setOpen(false); }
+            else if (onCountry) { onCountry(q); setOpen(false); }
           }}
         />
         <span className="icon"></span>
@@ -325,10 +330,16 @@ function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onRepo
                 <span className="dot"></span>{c}
               </button>
             ))}
+            {q && onCountry && (
+              <button className="suggest-country" onClick={() => { setOpen(false); onCountry(q); }}>
+                <span className="plus">🌍</span>
+                <span>הצג עיקופים ב“{q}” מהדוח הארצי — מיד, בלי להעלות קובץ</span>
+              </button>
+            )}
             {matches.length === 0 && q && (
               <button className="suggest-upload" onClick={() => { setOpen(false); onUpload(); }}>
                 <span className="plus">+</span>
-                <span>“{q}” לא טעונה — העלו GTFS כדי לסרוק אותה</span>
+                <span>או: העלו GTFS כדי לחקור את “{q}” לעומק</span>
               </button>
             )}
           </div>
@@ -373,12 +384,26 @@ function WhatsNewModal({ open, onClose }) {
 // חלון "כל הארץ" — טוען דוח ארצי מוכן (country-scan.json) שנסרק מראש ע"י
 // scan-country.js (ומתעדכן אוטומטית ע"י GitHub Action). מאפשר לראות את כל
 // העיקופים בארץ מהטלפון בלי לעבד GTFS — פשוט קורא תוצאה מוכנה.
-function CountryModal({ open, onClose, onPick }) {
+function CountryModal({ open, onClose, onPick, initialCity }) {
   const [data, setData] = React.useState(null);
   const [err, setErr] = React.useState(null);
   const [filter, setFilter] = React.useState("אמיתי");
   const [q, setQ] = React.useState("");
   const [sort, setSort] = React.useState("waste"); // "waste" = מבזבז/יום | "excess" = ק"מ מיותרים
+  const [cityText, setCityText] = React.useState("");
+  const [city, setCity] = React.useState(null); // { name, bbox:[minLat,minLng,maxLat,maxLng] } | null
+  const [cityGeo, setCityGeo] = React.useState({ status: "idle" }); // idle|locating|error
+  // איתור עיר → תיבה גאוגרפית (presets מיידי, אחרת OSM). מסנן את הדוח לאזור העיר.
+  const lookupCity = React.useCallback((name) => {
+    name = (name || "").trim();
+    if (!name) { setCity(null); setCityGeo({ status: "idle" }); return; }
+    const p = (typeof CITY_PRESETS !== "undefined" ? CITY_PRESETS : []).find((x) => x.name === name);
+    if (p) { setCity({ name, bbox: p.bbox }); setCityGeo({ status: "idle" }); return; }
+    setCityGeo({ status: "locating" });
+    geocodeCityBBox(name)
+      .then((r) => { setCity({ name, bbox: r.bbox }); setCityGeo({ status: "idle" }); })
+      .catch(() => setCityGeo({ status: "error" }));
+  }, []);
   React.useEffect(() => {
     if (!open || data || err) return;
     fetch("country-scan.json", { cache: "no-store" })
@@ -386,29 +411,51 @@ function CountryModal({ open, onClose, onPick }) {
       .then(setData)
       .catch((e) => setErr(e.message || String(e)));
   }, [open, data, err]);
+  // עיר התחלתית (כשנפתח מתוך חיפוש-העיר הראשי)
+  React.useEffect(() => {
+    if (open && initialCity) { setCityText(initialCity); lookupCity(initialCity); }
+  }, [open, initialCity, lookupCity]);
   if (!open) return null;
   const issues = (data && data.issues) || [];
   const qn = q.trim();
-  const shown = issues.filter((i) =>
+  const bb = city && city.bbox;
+  const inCity = (i) => !bb || (i.lat != null && i.lat >= bb[0] && i.lat <= bb[2] && i.lng >= bb[1] && i.lng <= bb[3]);
+  const cityIssues = issues.filter(inCity);
+  const shown = cityIssues.filter((i) =>
     (filter === "הכל" || i.verdict === filter) &&
     (!qn || ((i.line || "") + " " + (i.operator || "") + " " + (i.from || "") + " " + (i.to || "")).includes(qn))
   ).sort((a, b) => sort === "excess" ? (b.excessKm - a.excessKm) : ((b.wasteDayKm || 0) - (a.wasteDayKm || 0)));
-  const count = (v) => (v === "הכל" ? (data ? data.totalIssues : 0) : (data && data.byVerdict && data.byVerdict[v]) || 0);
+  const count = (v) => v === "הכל" ? cityIssues.length : cityIssues.filter((i) => i.verdict === v).length;
+  const cityReal = cityIssues.filter((i) => i.verdict === "אמיתי").length;
+  const cityWaste = Math.round(cityIssues.filter((i) => i.verdict === "אמיתי").reduce((s, i) => s + (i.wasteDayKm || 0), 0));
   const vClass = (v) => v === "אמיתי" ? "real" : v === "רעש" ? "noise" : v === "ספק" ? "doubt" : "incomp";
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal country-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <h2>כל הארץ</h2>
+          <h2>{city ? city.name : "כל הארץ"}</h2>
           <button className="x" onClick={onClose}>×</button>
         </div>
         {!data && !err && <p className="modal-hint">טוען דוח ארצי…</p>}
         {err && <div className="job-error">לא הצלחתי לטעון את הדוח הארצי ({err}). ייתכן שהוא טרם נוצר.</div>}
         {data && (
           <>
+            <div className="country-city">
+              <input
+                className="country-cityinput" value={cityText}
+                placeholder="הקלידו עיר (למשל: באר שבע) — או השאירו ריק לכל הארץ"
+                onChange={(e) => setCityText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") lookupCity(cityText); }}
+              />
+              <button className="btn-secondary country-citybtn" onClick={() => lookupCity(cityText)}>אתר</button>
+              {city && <button className="chip chip-city on" onClick={() => { setCity(null); setCityText(""); setCityGeo({ status: "idle" }); }}>✕ {city.name}</button>}
+              {cityGeo.status === "locating" && <span className="modal-hint" style={{ margin: 0 }}>מאתר…</span>}
+              {cityGeo.status === "error" && <span className="modal-hint" style={{ margin: 0, color: "var(--high)" }}>העיר לא נמצאה</span>}
+            </div>
             <p className="modal-hint">
-              {Number(data.totalLines).toLocaleString("he-IL")} קווים נסרקו · <b>{data.realCount}</b> עיקופים אמיתיים
-              {data.totalWasteDayKm != null ? <> · <b>{Number(data.totalWasteDayKm).toLocaleString("he-IL")} ק"מ מבוזבזים ביום עמוס</b></> : null}
+              {city
+                ? <>{city.name} · <b>{cityReal}</b> עיקופים אמיתיים{cityWaste ? <> · <b>{cityWaste.toLocaleString("he-IL")} ק"מ מבוזבזים ביום עמוס</b></> : null}</>
+                : <>{Number(data.totalLines).toLocaleString("he-IL")} קווים נסרקו · <b>{data.realCount}</b> עיקופים אמיתיים{data.totalWasteDayKm != null ? <> · <b>{Number(data.totalWasteDayKm).toLocaleString("he-IL")} ק"מ מבוזבזים ביום עמוס</b></> : null}</>}
               {data.generatedAt ? " · עודכן " + new Date(data.generatedAt).toLocaleDateString("he-IL") : ""}
               {onPick ? " · לחצו על שורה כדי להציג על המפה 🗺️" : ""}
             </p>

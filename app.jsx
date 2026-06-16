@@ -166,6 +166,7 @@ function KavBug() {
   const [uploadOpen, setUploadOpen] = React.useState(false);
   const [infoOpen, setInfoOpen] = React.useState(false);
   const [countryOpen, setCountryOpen] = React.useState(false);
+  const [countryCity, setCountryCity] = React.useState(null); // עיר התחלתית לתצוגת "כל הארץ"
 
   // מצב "דווח על תקלה"
   const [reportMode, setReportMode] = React.useState(false);
@@ -1127,11 +1128,11 @@ ${engineFacts}
         onUpload={() => { setJob(null); setUploadOpen(true); }}
         onInfo={() => setInfoOpen(true)}
         onReport={enterReport}
-        onCountry={() => setCountryOpen(true)}
+        onCountry={(c) => { setCountryCity(c || null); setCountryOpen(true); }}
       />
       <UploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} onProcess={processFile} onCancel={cancelJob} job={job} />
       <InfoModal open={infoOpen} onClose={() => setInfoOpen(false)} />
-      <CountryModal open={countryOpen} onClose={() => setCountryOpen(false)} onPick={showCountryIssue} />
+      <CountryModal open={countryOpen} onClose={() => setCountryOpen(false)} onPick={showCountryIssue} initialCity={countryCity} />
       <div className="body" style={{ "--panel-w": panelWidth + "px" }}>
         {reportMode && city ? (
           <ReportPanel
