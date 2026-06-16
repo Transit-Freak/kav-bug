@@ -780,6 +780,7 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
 .vd-noise { background: var(--line); color: var(--ink-soft); }
 .vd-doubt { background: var(--med-bg); color: var(--med); }
 .vd-incomp { background: var(--bg); color: var(--ink-faint); }
+.vd-cover { background: var(--brand-soft); color: var(--brand-ink); }
 @media (max-width: 560px) { .country-modal { width: 100%; } .country-table { font-size: 12px; } }
 .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .modal-head h2 { font-family: "Heebo", sans-serif; font-size: 21px; font-weight: 800; margin: 0; }

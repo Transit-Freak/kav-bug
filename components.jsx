@@ -16,6 +16,7 @@ const CHANGELOG = [
   { version: "4.2", date: "16.6.2026", items: [
     "במפה: קטעי הלוך-חזור (שהקו נוסע על אותו כביש פעמיים) מוצגים עכשיו כשני קווים מקבילים — כל כיוון בנתיב שלו (הסטה קלה ימינה) — כך קל לראות את הנסיעה הכפולה.",
     "חיפוש עיר ב\"כל הארץ\": מקלידים שם-עיר (בחיפוש הראשי או בתוך החלון) ומקבלים מיד את כל העיקופים של אותה עיר מהדוח המוכן — כולל הבזבוז היומי, ולחיצה להצגה על המפה — *בלי להעלות קובץ GTFS*. חיפוש-העיר זמין מיד עם פתיחת החלון. בלחיצה על עיקוף המפה עוברת אוטומטית לתצוגה מפורטת והקו מצויר מהמסלול המלא — פחות \"ריחוף\".",
+    "פחות תקלות-שווא בדוח הארצי: כשוריאנט של הקו עוצר בתחנות-ביניים *בתוך* מקטע ה\"עיקוף\" (כיסוי-שכונה), הוא מסומן עכשיו כ\"כיסוי לגיטימי\" ולא כעיקוף מיותר — כי זו בחירת-מסלול שמשרתת נוסעים, לא בזבוז. הבדיקה לפי רצף-הנסיעה (לא רק קרבה למסלול), כדי לא לבלבל עם קו שעובר ליד תחנות ששירת קודם. סך הבזבוז היומי הארצי מחושב מעיקופים אמיתיים בלבד.",
   ] },
   { version: "4.1", date: "14.6.2026", items: [
     "תוקן: במצב \"דווח על תקלה\" שמות-תחנות ארוכים גלשו מחוץ למקומם (בעיקר במחשב) — עכשיו הם נשברים לשורה במקום לחרוג.",
@@ -408,7 +409,7 @@ function CountryModal({ open, onClose, onPick, initialCity }) {
   }, []);
   React.useEffect(() => {
     if (!open || data || err) return;
-    fetch("country-scan.json")
+    fetch("country-scan.json?v=" + (window.KAVBUG_BUILD || ""))
       .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(setData)
       .catch((e) => setErr(e.message || String(e)));
@@ -430,7 +431,7 @@ function CountryModal({ open, onClose, onPick, initialCity }) {
   const count = (v) => v === "הכל" ? cityIssues.length : cityIssues.filter((i) => i.verdict === v).length;
   const cityReal = cityIssues.filter((i) => i.verdict === "אמיתי").length;
   const cityWaste = Math.round(cityIssues.filter((i) => i.verdict === "אמיתי").reduce((s, i) => s + (i.wasteDayKm || 0), 0));
-  const vClass = (v) => v === "אמיתי" ? "real" : v === "רעש" ? "noise" : v === "ספק" ? "doubt" : "incomp";
+  const vClass = (v) => v === "אמיתי" ? "real" : v === "רעש" ? "noise" : v === "ספק" ? "doubt" : v === "כיסוי לגיטימי" ? "cover" : "incomp";
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal country-modal" onClick={(e) => e.stopPropagation()}>
@@ -462,7 +463,7 @@ function CountryModal({ open, onClose, onPick, initialCity }) {
               {onPick ? " · לחצו על שורה כדי להציג על המפה 🗺️" : ""}
             </p>
             <div className="country-controls">
-              {["אמיתי", "ספק", "לא ניתן להשוואה", "רעש", "הכל"].map((v) => (
+              {["אמיתי", "כיסוי לגיטימי", "ספק", "לא ניתן להשוואה", "רעש", "הכל"].map((v) => (
                 <button key={v} className={"chip chip-" + vClass(v) + (filter === v ? " on" : "")} onClick={() => setFilter(v)}>
                   {v} <span className="chip-n">{count(v)}</span>
                 </button>

@@ -41,6 +41,23 @@ const MIN_STOPS = 3;       // כמו באתר (minStops)
 const MIN_EXCESS = 0.05;   // כמו באתר (minExcess)
 const DEFAULT_COLOR = "#5b6470"; // הצבע אינו משפיע על הזיהוי
 
+// מרחק (מ') בין שתי נקודות [lat,lng]
+function havM(a, b) { const R = 6371000, T = x => x * Math.PI / 180; const dLat = T(b[0] - a[0]), dLng = T(b[1] - a[1]), la1 = T(a[0]), la2 = T(b[0]); return 2 * R * Math.asin(Math.sqrt(Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2)); }
+// מרחק (מ') מנקודה לפוליגון (לכל הקטעים) — קירוב מישורי מקומי
+function distToPath(p, path) {
+  if (!path || path.length < 2) return Infinity;
+  const kx = 111320 * Math.cos(p[0] * Math.PI / 180), ky = 110570;
+  const PX = p[1] * kx, PY = p[0] * ky; let min = Infinity;
+  for (let i = 1; i < path.length; i++) {
+    const ax = path[i - 1][1] * kx, ay = path[i - 1][0] * ky, bx = path[i][1] * kx, by = path[i][0] * ky;
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1e-9;
+    let t = ((PX - ax) * dx + (PY - ay) * dy) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const d = Math.hypot(PX - (ax + t * dx), PY - (ay + t * dy));
+    if (d < min) min = d;
+  }
+  return min;
+}
+
 // =====================  פענוח CSV/ZIP (מותאם מ-gtfs-worker.js)  =============
 function parseCSV(line) {
   if (line.indexOf('"') < 0) return line.split(",");
@@ -218,6 +235,21 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
   }
   console.error("  קווים (נציג לכל route):", bestPerRoute.size);
 
+  // רצף-התחנות *המסודר* של כל וריאנט לכל קו (לפי מספר). משמש לזהות "כיסוי שכונה":
+  // וריאנט שעוצר בתחנת-ביניים *בין* שתי תחנות-הקצה של המקטע. חשוב שהבדיקה תהיה
+  // לפי רצף-הנסיעה ולא רק קרבה-גיאוגרפית: קו עלול לעבור *ליד* תחנה שהוא כבר שירת
+  // קודם (חפיפת-מסלול) — וזה אינו כיסוי של המקטע הזה.
+  const lineVariants = new Map(); // number -> [ [ [lat,lng], ... ] ]
+  for (const v of bySig.values()) {
+    const rid = tripRoute.get(v.trip); if (!rid) continue;
+    const info = routes.get(rid); if (!info) continue;
+    const seq = [];
+    for (const id of v.ids) { const s = stops.get(id); if (s) seq.push([s.lat, s.lng]); }
+    if (seq.length < 2) continue;
+    let arr = lineVariants.get(info.number); if (!arr) { arr = []; lineVariants.set(info.number, arr); }
+    arr.push(seq);
+  }
+
   // ---- מעבר 4: shapes של הנציגים ----
   console.error("מעבר 4/4: shapes (מסלולים מדויקים)…");
   const neededShapes = new Set();
@@ -268,7 +300,6 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
     for (const it of L.issues) {
       const d = it.diag || {};
       const vr = d.kind ? verdictOf(d) : { verdict: "(אין-אבחון)", reason: "" };
-      byVerdict[vr.verdict] = (byVerdict[vr.verdict] || 0) + 1;
       // גאומטריה לציור על המפה: seg = מקטע הקו הנבדק (הכתום/העיקוף), ref = מסלול
       // קו-ההשוואה (הירוק). מעוגל ל-5 ספרות. round5 משאיר את הקובץ קומפקטי.
       const round5 = (g) => g && g.map((p) => [+(+p[0]).toFixed(5), +(+p[1]).toFixed(5)]);
@@ -315,6 +346,34 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
         lineShape = thin(sliceDense(L, a, b), 0.00003);
       }
       if (!(lineShape && lineShape.length > 1)) lineShape = thin(L.shape, 0.0013);
+      // "כיסוי שכונה": מסווגים עיקוף מחדש כ"כיסוי לגיטימי" *רק* אם קיים וריאנט של
+      // אותו קו שעוצר בתחנת-ביניים *ברצף-הנסיעה* בין שתי תחנות-הקצה של המקטע,
+      // והתחנה יושבת על מסלול-העיקוף. כך מבדילים בין שירות-שכונה אמיתי (קו 31: 4
+      // תחנות ב-שדרות האורנים בין "אכזיב/מולר" ל-"צומת גשר הזיו") לבין קו שסתם עובר
+      // *ליד* תחנות ששירת קודם (חפיפת-מסלול) — שזה לא כיסוי של המקטע.
+      let vr2 = vr;
+      if (vr.verdict === "אמיתי" && seg && seg.length > 1) {
+        const e0 = seg[0], e1 = seg[seg.length - 1];
+        let covered = false;
+        for (const seq of (lineVariants.get(L.number) || [])) {
+          // אינדקס התחנה הקרובה ביותר לכל קצה (עד 60 מ') — מזהים את המקטע ברצף
+          let i0 = -1, d0 = 60, i1 = -1, d1 = 60;
+          for (let k = 0; k < seq.length; k++) {
+            const a = havM(seq[k], e0); if (a < d0) { d0 = a; i0 = k; }
+            const b = havM(seq[k], e1); if (b < d1) { d1 = b; i1 = k; }
+          }
+          if (i0 < 0 || i1 < 0) continue;
+          const lo = Math.min(i0, i1), hi = Math.max(i0, i1);
+          for (let k = lo + 1; k < hi; k++) {
+            const s = seq[k];
+            // תחנת-ביניים אמיתית: רחוקה משתי הקצוות *ויושבת על* מסלול-העיקוף
+            if (havM(s, e0) > 45 && havM(s, e1) > 45 && distToPath(s, seg) < 40) { covered = true; break; }
+          }
+          if (covered) break;
+        }
+        if (covered) vr2 = { verdict: "כיסוי לגיטימי", reason: "וריאנט של הקו עוצר בתחנות-ביניים בתוך המקטע (כיסוי שכונה) — לא עיקוף מיותר, אלא בחירת מסלול שמשרתת נוסעים." };
+      }
+      byVerdict[vr2.verdict] = (byVerdict[vr2.verdict] || 0) + 1;
       const excessKm = +(it.km || d.excessKm || 0).toFixed(3);
       const tripsDay = L._tripsDay || 0;
       issues.push({
@@ -324,7 +383,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
         ref: it.refNumber, excessKm,
         tripsDay, wasteDayKm: +(excessKm * tripsDay).toFixed(1),
         ratio: d.ratio != null ? +d.ratio.toFixed(2) : null,
-        verdict: vr.verdict, reason: vr.reason || "",
+        verdict: vr2.verdict, reason: vr2.reason || "",
         seg: round5(seg), refGeom: round5(it.refGeom), lineShape: round5(lineShape),
       });
     }
