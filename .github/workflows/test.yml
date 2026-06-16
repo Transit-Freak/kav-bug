@@ -1,0 +1,28 @@
+# בדיקות אוטומטיות: טרנספילציה (תחביר/JSX) + בדיקת-mount (jsdom, effects חיים)
+# שתופסת קריסות "דף לבן" כמו זו שהייתה ב-4.2 (initialCity שאינו מחרוזת).
+name: tests
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "components.jsx"
+      - "app.jsx"
+      - "data.js"
+      - "scan-country.js"
+      - "test/**"
+      - "package.json"
+      - ".github/workflows/test.yml"
+  pull_request:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: התקנת תלויות-בדיקה
+        run: npm install --no-save jsdom react@18 react-dom@18 @babel/core @babel/preset-react
+      - name: בדיקות (טרנספילציה + mount)
+        run: npm test
