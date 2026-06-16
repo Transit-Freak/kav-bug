@@ -5,6 +5,24 @@ const DETOUR = "#ef8a17"; // כתום — אזור הסטייה
 const ROUTE = "#2563eb";  // כחול — מסלול הקו הנבדק (הקו עם התקלה, תואם ל-legend)
 const ALT = "#1f9d57";    // ירוק — מסלול קו-הייחוס (הקו שמולו משווים)
 
+// מסיט פוליגון ~meters מ' *ימינה לכיוון-הנסיעה*. כך קטעי הלוך-חזור על אותו כביש
+// נפרדים לשני קווים (כל כיוון בנתיב שלו) — כמו במפות-תחבורה, וכמו שאוטובוס נוסע
+// בצד ימין. קו חד-כיווני פשוט יושב מעט ימינה (בתוך הנתיב), כמעט בלי שינוי.
+function offsetRight(poly, meters) {
+  if (!poly || poly.length < 2) return poly;
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const lat = poly[i][0], lng = poly[i][1];
+    const mLat = 111320, mLng = 111320 * Math.cos(lat * Math.PI / 180);
+    const p = poly[Math.max(0, i - 1)], n = poly[Math.min(poly.length - 1, i + 1)];
+    let dx = (n[1] - p[1]) * mLng, dy = (n[0] - p[0]) * mLat;
+    const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
+    // ימינה לכיוון הנסיעה = סיבוב וקטור-הכיוון ב--90° → (dy, -dx)
+    out.push([lat + (-dx * meters) / mLat, lng + (dy * meters) / mLng]);
+  }
+  return out;
+}
+
 // סוגי מפה (רקע). בסיסי = נקי ואפור (הקווים בולטים); מפורט = OSM עם שמות בעברית בכל הזומים.
 const BASEMAPS = {
   clean: {
@@ -344,7 +362,8 @@ function KavBug() {
     setBasemap("detailed"); // מפה מפורטת (OSM) — שהכבישים יוצגו מתחת לקווים, לא "ירחפו"
     grp.clearLayers();
     if (layerRef.current) layerRef.current.clearLayers(); // לנקות ציור-עיר אם קיים
-    const shape = issue.lineShape, seg = issue.seg, ref = issue.refGeom;
+    // הסטה ימינה (~5 מ') כדי שקטעי הלוך-חזור על אותו כביש יוצגו כשני קווים נפרדים.
+    const shape = offsetRight(issue.lineShape, 5), seg = offsetRight(issue.seg, 5), ref = issue.refGeom;
     // כל מסלול הקו (כחול) — רקע/הקשר, כדי שהמקטע לא "ירחף"
     if (shape && shape.length > 1) {
       L.polyline(shape, { color: ROUTE, weight: 5, opacity: 0.5, lineCap: "round", lineJoin: "round" })
