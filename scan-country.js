@@ -305,15 +305,16 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       const segIdx = it.segIdx && it.segIdx[0];
       let seg = (segIdx != null) ? sliceDense(L, segIdx, segIdx + 1) : null;
       if (!(seg && seg.length > 1)) seg = (d.lineGeometry && d.lineGeometry.length > 1) ? d.lineGeometry : ((L._geom && segIdx != null && L._geom[segIdx]) || null);
-      // תקרת-נקודות לרקע (לקווים ארוכים) — מגביל נפח. seg (העיקוף) נשאר צפוף.
-      const cap = (g, n) => {
-        if (!g || g.length <= n) return g;
-        const out = []; const step = (g.length - 1) / (n - 1);
-        for (let k = 0; k < n; k++) out.push(g[Math.round(k * step)]);
-        return out;
-      };
-      seg = thin(seg, 0.00003);            // ~5 מ' — צפוף, עוקב אחר הכביש
-      const lineShape = cap(thin(L.shape, 0.0006), 220); // ~25 מ' + תקרת 220 נק' (רקע)
+      seg = thin(seg, 0.00003);             // ~5 מ' — צפוף, עוקב אחר הכביש
+      // קו-הרקע (כחול): *חלון צפוף* סביב העיקוף (3 תחנות לפני/אחרי) במקום כל הקו
+      // הארוך — כך הוא צפוף ועוקב אחר הכביש (לא "מרחף") ונשאר קטן. נותן הקשר: רואים
+      // את הקו נכנס ויוצא מאזור העיקוף.
+      let lineShape = null;
+      if (segIdx != null && L.stops) {
+        const a = Math.max(0, segIdx - 3), b = Math.min(L.stops.length - 1, segIdx + 4);
+        lineShape = thin(sliceDense(L, a, b), 0.00003);
+      }
+      if (!(lineShape && lineShape.length > 1)) lineShape = thin(L.shape, 0.0013);
       const excessKm = +(it.km || d.excessKm || 0).toFixed(3);
       const tripsDay = L._tripsDay || 0;
       issues.push({
