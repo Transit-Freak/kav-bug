@@ -207,20 +207,47 @@ function retraceRuns(poly, Apt, Bpt) {
   return merged.map(r => poly.slice(r[0], r[1] + 1));
 }
 
-// בורר את החלק(ים) ה*מיותר* בתוך מקטע-עיקוף — לא את כל המקטע מתחנה לתחנה: קודם
-// בליטה צידית מקו-הייחוס (divergenceRun), אחרת נסיגה/הלוך-חזור על אותו כביש
-// (retraceRuns), אחרת לולאה (findLoop). מחזיר מערך פוליגונים, או null כשאין חלק
-// מובהק (אז הקורא מצייר את כל המקטע). from/to הם תחנות-הקצה {lat,lng}.
+// בורר את החלק(ים) ה*מיותר* בתוך מקטע-עיקוף — לא את כל המקטע מתחנה לתחנה. מסמן
+// נקודה כמיותרת אם היא מקיימת *אחד מהשניים* (איחוד, לא או-זה-או-זה): (1) בליטה
+// צידית — רחוקה מקו-הייחוס (>35 מ'); או (2) נסיגה/הלוך-חזור — ה-t שלה (היטל על
+// ציר A→B) נמוך מה"חזית" המקסימלית שכבר הושגה, כלומר היא חוזרת על קטע-ציר שכבר
+// כוסה. האיחוד הכרחי: בהלוך-חזור על כביש משותף (קו 20), הכיכר בקצה לבדה רחוקה
+// מהירוק — אבל כל ה"הלוך" וה"חזור" הם נסיגה, ולכן מסומנים. מחזיר מערך פוליגונים,
+// או null כשאין חלק מובהק (אז הקורא מצייר את כל המקטע). from/to = תחנות-הקצה.
 function wastefulRuns(detourPoly, refG, from, to) {
   if (!detourPoly || detourPoly.length < 2) return null;
-  if (refG && refG.length > 1) {
-    const divRun = divergenceRun(detourPoly, refG, 0.035);
-    if (divRun) return [detourPoly.slice(divRun[0], divRun[1] + 1)];
+  const n = detourPoly.length;
+  const mask = new Array(n).fill(false);
+  // (1) בליטה צידית מקו-הייחוס
+  if (refG && refG.length > 1)
+    for (let i = 0; i < n; i++) if (distToPoly(detourPoly[i], refG) > 0.035) mask[i] = true;
+  // (2) נסיגה/הלוך-חזור מתחת ל"חזית" על ציר A→B
+  if (from && to && n >= 4) {
+    const A = [from.lat, from.lng], B = [to.lat, to.lng];
+    const ux = B[0] - A[0], uy = (B[1] - A[1]) * Math.cos(A[0] * Math.PI / 180);
+    const uu = ux * ux + uy * uy || 1e-12;
+    const tOf = (p) => { const px = p[0] - A[0], py = (p[1] - A[1]) * Math.cos(A[0] * Math.PI / 180); return (px * ux + py * uy) / uu; };
+    const eps = 0.03; // 3% מאורך הציר — סף-רעש לזיהוי ירידה
+    let frontier = -Infinity;
+    for (let i = 0; i < n; i++) { const t = tOf(detourPoly[i]); if (t > frontier) frontier = t; else if (t < frontier - eps) mask[i] = true; }
   }
-  const oab = retraceRuns(detourPoly, from, to);
-  if (oab) return oab;
-  const loop = findLoop(detourPoly, 0.045, 0.08);
-  return loop ? [detourPoly.slice(loop.i, loop.j + 1)] : null;
+  // חילוץ רצפים רציפים של "מיותר", הרחבה בנקודה לכל צד (חיבור חלק לרקע) + איחוד
+  const merged = [];
+  let i = 0;
+  while (i < n) {
+    if (!mask[i]) { i++; continue; }
+    let j = i; while (j + 1 < n && mask[j + 1]) j++;
+    const lo = Math.max(0, i - 1), hi = Math.min(n - 1, j + 1);
+    const last = merged[merged.length - 1];
+    if (last && lo <= last[1] + 1) last[1] = Math.max(last[1], hi);
+    else merged.push([lo, hi]);
+    i = j + 1;
+  }
+  if (!merged.length) {
+    const loop = findLoop(detourPoly, 0.045, 0.08);
+    return loop ? [detourPoly.slice(loop.i, loop.j + 1)] : null;
+  }
+  return merged.map((r) => detourPoly.slice(r[0], r[1] + 1));
 }
 
 // גוזם את הקידומת והסיומת המשותפות בין polyA ל-polyB, ומחזיר את הרצף הרציף
