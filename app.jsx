@@ -341,6 +341,7 @@ function KavBug() {
   const showCountryIssue = (issue) => {
     const map = mapRef.current, grp = countryLayerRef.current;
     if (!map || !grp || !issue) return;
+    setBasemap("detailed"); // מפה מפורטת (OSM) — שהכבישים יוצגו מתחת לקווים, לא "ירחפו"
     grp.clearLayers();
     if (layerRef.current) layerRef.current.clearLayers(); // לנקות ציור-עיר אם קיים
     const shape = issue.lineShape, seg = issue.seg, ref = issue.refGeom;
