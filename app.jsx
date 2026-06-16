@@ -127,6 +127,102 @@ function findLoop(poly, thr, minArc) {
   return best;
 }
 
+// אזור ההתפצלות: תת-הקטע של מסלול הנבדק שבו הוא *מתרחק* מקו-הייחוס (הירוק)
+// ביותר מ-thrKm — כלומר מהנקודה שבה מתחילה ההתפצלות מהקו האחר ועד החזרה אליו.
+// מחזיר [lo,hi] (אינדקסים) או null. משותף לתצוגת-עיר ולתצוגת "כל הארץ".
+function divergenceRun(testedPoly, refPoly, thrKm) {
+  if (!testedPoly || testedPoly.length < 2 || !refPoly || refPoly.length < 2) return null;
+  const distToRefKm = (pt) => {
+    let best = Infinity;
+    for (const r of refPoly) {
+      const cos = Math.cos(pt[0] * Math.PI / 180);
+      const dy = r[0] - pt[0], dx = (r[1] - pt[1]) * cos;
+      const d = Math.sqrt(dy * dy + dx * dx) * 111.32;
+      if (d < best) best = d;
+    }
+    return best;
+  };
+  let lo = -1, hi = -1;
+  for (let i = 0; i < testedPoly.length; i++) {
+    if (distToRefKm(testedPoly[i]) > thrKm) { if (lo === -1) lo = i; hi = i; }
+  }
+  if (lo === -1) return null;
+  // הרחבה בנקודה לכל צד כך שהכתום יתחבר חזרה לכחול בנקודת ההתפצלות/האיחוי.
+  lo = Math.max(0, lo - 1); hi = Math.min(testedPoly.length - 1, hi + 1);
+  return [lo, hi];
+}
+
+// זיהוי "נסיגה/הלוך-חזור" כללי לאורך ציר A→B: עובדים על ההיטל היחסי t של כל
+// נקודה על הציר (0=A, 1=B). מסלול תקין מתקדם מונוטונית 0→1. כל ירידה של t
+// אל *מתחת ל"חזית"* (ה-t המקסימלי שכבר הושג) ואז חזרה אליה = נסיגה מיותרת:
+// הקו חוזר על קטע-ציר שכבר כיסה. מסמן את כל קטעי-הנסיגה (כולל לולאה התחלתית
+// ליד A שבה t יורד מתחת ל-0, וכולל נסיגה ביעד B). תופס גם נסיגה *באמצע*
+// המקטע (קו 64: מתקדם ל-68%, חוזר ל-20%, ושוב מתקדם) וגם נסיגה אחרי הגעה
+// ל-B (קו 140). מחזיר מערך טווחי-פוליגון מיותרים, או null אם אין נסיגה ממשית.
+function retraceRuns(poly, Apt, Bpt) {
+  if (!poly || poly.length < 4 || !Apt || !Bpt) return null;
+  const A = [Apt.lat, Apt.lng], B = [Bpt.lat, Bpt.lng];
+  const ux = B[0] - A[0], uy = (B[1] - A[1]) * Math.cos(A[0] * Math.PI / 180);
+  const uu = ux * ux + uy * uy || 1e-12;
+  const tOf = (p) => {
+    const px = p[0] - A[0], py = (p[1] - A[1]) * Math.cos(A[0] * Math.PI / 180);
+    return (px * ux + py * uy) / uu;
+  };
+  const segKm = (i, k) => {
+    const cos = Math.cos(poly[i][0] * Math.PI / 180);
+    const dy = poly[k][0] - poly[i][0], dx = (poly[k][1] - poly[i][1]) * cos;
+    return Math.sqrt(dy * dy + dx * dx) * 111.32;
+  };
+  const t = poly.map(tOf);
+  const eps = 0.03; // 3% מאורך A→B — סף-רעש לזיהוי ירידה
+  const runs = [];
+  let frontier = t[0], frontierIdx = 0, i = 1;
+  while (i < poly.length) {
+    if (t[i] >= frontier - eps) {
+      if (t[i] > frontier) { frontier = t[i]; }
+      frontierIdx = i; i++;
+    } else {
+      // נסיגה: מהחזית (frontierIdx) דרך הירידה עד החזרה אל רמת-החזית
+      const start = frontierIdx;
+      let j = i;
+      while (j < poly.length && t[j] < frontier - eps) j++;
+      const end = Math.min(j, poly.length - 1);
+      runs.push([start, end]);
+      i = j; frontierIdx = end;
+    }
+  }
+  if (!runs.length) return null;
+  // איחוד טווחים חופפים/צמודים
+  runs.sort((u, v) => u[0] - v[0]);
+  const merged = [runs[0].slice()];
+  for (let k = 1; k < runs.length; k++) {
+    const last = merged[merged.length - 1];
+    if (runs[k][0] <= last[1] + 1) last[1] = Math.max(last[1], runs[k][1]);
+    else merged.push(runs[k].slice());
+  }
+  // רק אם סך-הנסיגה משמעותי (≥120מ' מצטבר) — אחרת זה רעש קטן (findLoop יטפל)
+  let totalKm = 0;
+  for (const r of merged) for (let s = r[0]; s < r[1]; s++) totalKm += segKm(s, s + 1);
+  if (totalKm < 0.12) return null;
+  return merged.map(r => poly.slice(r[0], r[1] + 1));
+}
+
+// בורר את החלק(ים) ה*מיותר* בתוך מקטע-עיקוף — לא את כל המקטע מתחנה לתחנה: קודם
+// בליטה צידית מקו-הייחוס (divergenceRun), אחרת נסיגה/הלוך-חזור על אותו כביש
+// (retraceRuns), אחרת לולאה (findLoop). מחזיר מערך פוליגונים, או null כשאין חלק
+// מובהק (אז הקורא מצייר את כל המקטע). from/to הם תחנות-הקצה {lat,lng}.
+function wastefulRuns(detourPoly, refG, from, to) {
+  if (!detourPoly || detourPoly.length < 2) return null;
+  if (refG && refG.length > 1) {
+    const divRun = divergenceRun(detourPoly, refG, 0.035);
+    if (divRun) return [detourPoly.slice(divRun[0], divRun[1] + 1)];
+  }
+  const oab = retraceRuns(detourPoly, from, to);
+  if (oab) return oab;
+  const loop = findLoop(detourPoly, 0.045, 0.08);
+  return loop ? [detourPoly.slice(loop.i, loop.j + 1)] : null;
+}
+
 // גוזם את הקידומת והסיומת המשותפות בין polyA ל-polyB, ומחזיר את הרצף הרציף
 // של polyA שבו הוא נפרד (>tol ק"מ) מ-polyB — מנקודה ראשונה שנפרדת עד אחרונה.
 // מחזיר null אם המסלולים חופפים לכל אורכם (אין היפרדות אמיתית).
@@ -369,14 +465,28 @@ function KavBug() {
       L.polyline(shape, { color: ROUTE, weight: 5, opacity: 0.5, lineCap: "round", lineJoin: "round" })
         .addTo(grp).bindTooltip(`קו ${issue.line}${issue.operator ? " · " + issue.operator : ""}`, { className: "seg-tip", sticky: true });
     }
-    // המקטע הבעייתי (כתום) — מצויר לפני הירוק
-    if (seg && seg.length > 1) {
-      L.polyline(seg, { color: DETOUR, weight: 9, opacity: 1, lineCap: "round", lineJoin: "round" })
-        .addTo(grp).bindTooltip(`עיקוף · ${fmt(issue.excessKm)} ק"מ`, { className: "seg-tip", sticky: true });
+    // המקטע הבעייתי (כתום) — מצויר *רק על החלק המיותר בפועל* (בליטה/נסיגה/לולאה),
+    // לא לאורך כל המקטע מתחנה לתחנה. אותו זיהוי כמו בתצוגת-עיר. אם אין חלק מובהק —
+    // נופלים לציור כל המקטע. החישוב על הגאומטריה המקורית (לא המוסטת), והציור מוסט.
+    if (issue.seg && issue.seg.length > 1) {
+      const from = { lat: issue.seg[0][0], lng: issue.seg[0][1] };
+      const to = { lat: issue.seg[issue.seg.length - 1][0], lng: issue.seg[issue.seg.length - 1][1] };
+      const runs = wastefulRuns(issue.seg, issue.refGeom, from, to) || [issue.seg];
+      runs.forEach((run) => {
+        if (!run || run.length < 2) return;
+        L.polyline(offsetRight(run, 5), { color: DETOUR, weight: 9, opacity: 1, lineCap: "round", lineJoin: "round" })
+          .addTo(grp).bindTooltip(`החלק המיותר · ${fmt(issue.excessKm)} ק"מ`, { className: "seg-tip", sticky: true });
+      });
     }
-    // קו-ההשוואה (ירוק) — שכבה עליונה, מצויר *מעל* הכתום (כמו בתצוגת-עיר)
-    if (ref && ref.length > 1) {
-      L.polyline(ref, { color: ALT, weight: 6, opacity: 0.95, dashArray: "2 9", lineCap: "round", lineJoin: "round" })
+    // קו-ההשוואה (ירוק) — שכבה עליונה, חתוך לאזור ההתפצלות בלבד (סימטרי לכתום),
+    // כדי שלא "יתחיל הרבה לפני" לאורך הרגל המשותפת.
+    let refDraw = ref;
+    if (ref && ref.length > 1 && issue.seg && issue.seg.length > 1) {
+      const gRun = divergenceRun(ref, issue.seg, 0.035);
+      if (gRun) refDraw = ref.slice(gRun[0], gRun[1] + 1);
+    }
+    if (refDraw && refDraw.length > 1) {
+      L.polyline(refDraw, { color: ALT, weight: 6, opacity: 0.95, dashArray: "2 9", lineCap: "round", lineJoin: "round" })
         .addTo(grp).bindTooltip(`מסלול הקו להשוואה · קו ${issue.ref}`, { className: "seg-tip", sticky: true });
     }
     const fit = (shape && shape.length > 1) ? shape : (seg || []).concat(ref || []);
@@ -494,84 +604,8 @@ function KavBug() {
       detourPoly = geomRange(line, a, b);
     }
 
-    // אזור ההתפצלות: תת-הקטע של מסלול הנבדק שבו הוא *מתרחק* מקו-הייחוס (הירוק)
-    // ביותר מ-thrKm — כלומר מהנקודה שבה מתחילה ההתפצלות מהקו האחר ועד החזרה אליו.
-    const divergenceRun = (testedPoly, refPoly, thrKm) => {
-      if (!testedPoly || testedPoly.length < 2 || !refPoly || refPoly.length < 2) return null;
-      const distToRefKm = (pt) => {
-        let best = Infinity;
-        for (const r of refPoly) {
-          const cos = Math.cos(pt[0] * Math.PI / 180);
-          const dy = r[0] - pt[0], dx = (r[1] - pt[1]) * cos;
-          const d = Math.sqrt(dy * dy + dx * dx) * 111.32;
-          if (d < best) best = d;
-        }
-        return best;
-      };
-      let lo = -1, hi = -1;
-      for (let i = 0; i < testedPoly.length; i++) {
-        if (distToRefKm(testedPoly[i]) > thrKm) { if (lo === -1) lo = i; hi = i; }
-      }
-      if (lo === -1) return null;
-      // הרחבה בנקודה לכל צד כך שהכתום יתחבר חזרה לכחול בנקודת ההתפצלות/האיחוי.
-      lo = Math.max(0, lo - 1); hi = Math.min(testedPoly.length - 1, hi + 1);
-      return [lo, hi];
-    };
-
-    // זיהוי "נסיגה/הלוך-חזור" כללי לאורך ציר A→B: עובדים על ההיטל היחסי t של כל
-    // נקודה על הציר (0=A, 1=B). מסלול תקין מתקדם מונוטונית 0→1. כל ירידה של t
-    // אל *מתחת ל"חזית"* (ה-t המקסימלי שכבר הושג) ואז חזרה אליה = נסיגה מיותרת:
-    // הקו חוזר על קטע-ציר שכבר כיסה. מסמן את כל קטעי-הנסיגה (כולל לולאה התחלתית
-    // ליד A שבה t יורד מתחת ל-0, וכולל נסיגה ביעד B). תופס גם נסיגה *באמצע*
-    // המקטע (קו 64: מתקדם ל-68%, חוזר ל-20%, ושוב מתקדם) וגם נסיגה אחרי הגעה
-    // ל-B (קו 140). מחזיר מערך טווחי-פוליגון מיותרים, או null אם אין נסיגה ממשית.
-    const retraceRuns = (poly, Apt, Bpt) => {
-      if (!poly || poly.length < 4 || !Apt || !Bpt) return null;
-      const A = [Apt.lat, Apt.lng], B = [Bpt.lat, Bpt.lng];
-      const ux = B[0] - A[0], uy = (B[1] - A[1]) * Math.cos(A[0] * Math.PI / 180);
-      const uu = ux * ux + uy * uy || 1e-12;
-      const tOf = (p) => {
-        const px = p[0] - A[0], py = (p[1] - A[1]) * Math.cos(A[0] * Math.PI / 180);
-        return (px * ux + py * uy) / uu;
-      };
-      const segKm = (i, k) => {
-        const cos = Math.cos(poly[i][0] * Math.PI / 180);
-        const dy = poly[k][0] - poly[i][0], dx = (poly[k][1] - poly[i][1]) * cos;
-        return Math.sqrt(dy * dy + dx * dx) * 111.32;
-      };
-      const t = poly.map(tOf);
-      const eps = 0.03; // 3% מאורך A→B — סף-רעש לזיהוי ירידה
-      const runs = [];
-      let frontier = t[0], frontierIdx = 0, i = 1;
-      while (i < poly.length) {
-        if (t[i] >= frontier - eps) {
-          if (t[i] > frontier) { frontier = t[i]; }
-          frontierIdx = i; i++;
-        } else {
-          // נסיגה: מהחזית (frontierIdx) דרך הירידה עד החזרה אל רמת-החזית
-          const start = frontierIdx;
-          let j = i;
-          while (j < poly.length && t[j] < frontier - eps) j++;
-          const end = Math.min(j, poly.length - 1);
-          runs.push([start, end]);
-          i = j; frontierIdx = end;
-        }
-      }
-      if (!runs.length) return null;
-      // איחוד טווחים חופפים/צמודים
-      runs.sort((u, v) => u[0] - v[0]);
-      const merged = [runs[0].slice()];
-      for (let k = 1; k < runs.length; k++) {
-        const last = merged[merged.length - 1];
-        if (runs[k][0] <= last[1] + 1) last[1] = Math.max(last[1], runs[k][1]);
-        else merged.push(runs[k].slice());
-      }
-      // רק אם סך-הנסיגה משמעותי (≥120מ' מצטבר) — אחרת זה רעש קטן (findLoop יטפל)
-      let totalKm = 0;
-      for (const r of merged) for (let s = r[0]; s < r[1]; s++) totalKm += segKm(s, s + 1);
-      if (totalKm < 0.12) return null;
-      return merged.map(r => poly.slice(r[0], r[1] + 1));
-    };
+    // divergenceRun / retraceRuns / wastefulRuns — הוגדרו ב-scope המודול (למעלה),
+    // לשימוש משותף עם showCountryIssue (תצוגת "כל הארץ").
 
     // צביעת אזור הסטייה — אך ורק על גבי הגאומטריה של הקו הנבדק עצמו (נתיב הרישוי).
     // הכתום מסומן *רק מהנקודה שבה הקו הנבדק מתפצל מקו-הייחוס הירוק* ועד שהוא חוזר
