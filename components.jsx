@@ -8,10 +8,13 @@ const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "
 
 // גרסת האפליקציה (מספור דו-ספרתי: גדולה.קטנה) — מקור-אמת יחיד. כל שחרור מקדם את
 // הספרה הקטנה; הספרה הגדולה עולה באבני-דרך משמעותיות. (עד 1.3.11 היה SemVer.)
-const KAVBUG_VERSION = "4.2";
+const KAVBUG_VERSION = "4.3";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
+  { version: "4.3", date: "16.6.2026", items: [
+    "תוקן: לחיצה על \"כל הארץ\" הציגה דף לבן (קריסה) — אירוע-הלחיצה הועבר בטעות כשם-עיר. תוקן, וגם חיפוש-העיר זמין עכשיו מיד עם פתיחת החלון (לא ממתין לטעינת הדוח).",
+  ] },
   { version: "4.2", date: "16.6.2026", items: [
     "חיפוש עיר ב\"כל הארץ\": מקלידים שם-עיר (בחיפוש הראשי או בתוך החלון) ומקבלים מיד את כל העיקופים של אותה עיר מהדוח המוכן — כולל הבזבוז היומי, ולחיצה להצגה על המפה — *בלי להעלות קובץ GTFS*.",
   ] },
@@ -301,7 +304,7 @@ function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onRepo
       </div>
       <div className="spacer"></div>
       <button className="icon-btn" onClick={onInfo} title="איך זה עובד">?</button>
-      <button className="report-btn" onClick={onCountry} title="דוח ארצי מוכן — כל העיקופים בארץ">
+      <button className="report-btn" onClick={() => onCountry()} title="דוח ארצי מוכן — כל העיקופים בארץ">
         <span className="u-ico">🌍</span>כל הארץ
       </button>
       <button className="report-btn" onClick={onReport} title="דווח על קו עם תקלה שלא זוהתה">
@@ -395,7 +398,7 @@ function CountryModal({ open, onClose, onPick, initialCity }) {
   const [cityGeo, setCityGeo] = React.useState({ status: "idle" }); // idle|locating|error
   // איתור עיר → תיבה גאוגרפית (presets מיידי, אחרת OSM). מסנן את הדוח לאזור העיר.
   const lookupCity = React.useCallback((name) => {
-    name = (name || "").trim();
+    name = (typeof name === "string" ? name : "").trim();
     if (!name) { setCity(null); setCityGeo({ status: "idle" }); return; }
     const p = (typeof CITY_PRESETS !== "undefined" ? CITY_PRESETS : []).find((x) => x.name === name);
     if (p) { setCity({ name, bbox: p.bbox }); setCityGeo({ status: "idle" }); return; }
@@ -406,14 +409,14 @@ function CountryModal({ open, onClose, onPick, initialCity }) {
   }, []);
   React.useEffect(() => {
     if (!open || data || err) return;
-    fetch("country-scan.json", { cache: "no-store" })
+    fetch("country-scan.json")
       .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(setData)
       .catch((e) => setErr(e.message || String(e)));
   }, [open, data, err]);
   // עיר התחלתית (כשנפתח מתוך חיפוש-העיר הראשי)
   React.useEffect(() => {
-    if (open && initialCity) { setCityText(initialCity); lookupCity(initialCity); }
+    if (open && typeof initialCity === "string" && initialCity) { setCityText(initialCity); lookupCity(initialCity); }
   }, [open, initialCity, lookupCity]);
   if (!open) return null;
   const issues = (data && data.issues) || [];
@@ -436,22 +439,22 @@ function CountryModal({ open, onClose, onPick, initialCity }) {
           <h2>{city ? city.name : "כל הארץ"}</h2>
           <button className="x" onClick={onClose}>×</button>
         </div>
+        <div className="country-city">
+          <input
+            className="country-cityinput" value={cityText}
+            placeholder="הקלידו עיר (למשל: באר שבע) — או השאירו ריק לכל הארץ"
+            onChange={(e) => setCityText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") lookupCity(cityText); }}
+          />
+          <button className="btn-secondary country-citybtn" onClick={() => lookupCity(cityText)}>אתר</button>
+          {city && <button className="chip chip-city on" onClick={() => { setCity(null); setCityText(""); setCityGeo({ status: "idle" }); }}>✕ {city.name}</button>}
+          {cityGeo.status === "locating" && <span className="modal-hint" style={{ margin: 0 }}>מאתר…</span>}
+          {cityGeo.status === "error" && <span className="modal-hint" style={{ margin: 0, color: "var(--high)" }}>העיר לא נמצאה</span>}
+        </div>
         {!data && !err && <p className="modal-hint">טוען דוח ארצי…</p>}
         {err && <div className="job-error">לא הצלחתי לטעון את הדוח הארצי ({err}). ייתכן שהוא טרם נוצר.</div>}
         {data && (
           <>
-            <div className="country-city">
-              <input
-                className="country-cityinput" value={cityText}
-                placeholder="הקלידו עיר (למשל: באר שבע) — או השאירו ריק לכל הארץ"
-                onChange={(e) => setCityText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") lookupCity(cityText); }}
-              />
-              <button className="btn-secondary country-citybtn" onClick={() => lookupCity(cityText)}>אתר</button>
-              {city && <button className="chip chip-city on" onClick={() => { setCity(null); setCityText(""); setCityGeo({ status: "idle" }); }}>✕ {city.name}</button>}
-              {cityGeo.status === "locating" && <span className="modal-hint" style={{ margin: 0 }}>מאתר…</span>}
-              {cityGeo.status === "error" && <span className="modal-hint" style={{ margin: 0, color: "var(--high)" }}>העיר לא נמצאה</span>}
-            </div>
             <p className="modal-hint">
               {city
                 ? <>{city.name} · <b>{cityReal}</b> עיקופים אמיתיים{cityWaste ? <> · <b>{cityWaste.toLocaleString("he-IL")} ק"מ מבוזבזים ביום עמוס</b></> : null}</>
