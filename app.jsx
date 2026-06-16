@@ -152,61 +152,6 @@ function divergenceRun(testedPoly, refPoly, thrKm) {
   return [lo, hi];
 }
 
-// זיהוי "נסיגה/הלוך-חזור" כללי לאורך ציר A→B: עובדים על ההיטל היחסי t של כל
-// נקודה על הציר (0=A, 1=B). מסלול תקין מתקדם מונוטונית 0→1. כל ירידה של t
-// אל *מתחת ל"חזית"* (ה-t המקסימלי שכבר הושג) ואז חזרה אליה = נסיגה מיותרת:
-// הקו חוזר על קטע-ציר שכבר כיסה. מסמן את כל קטעי-הנסיגה (כולל לולאה התחלתית
-// ליד A שבה t יורד מתחת ל-0, וכולל נסיגה ביעד B). תופס גם נסיגה *באמצע*
-// המקטע (קו 64: מתקדם ל-68%, חוזר ל-20%, ושוב מתקדם) וגם נסיגה אחרי הגעה
-// ל-B (קו 140). מחזיר מערך טווחי-פוליגון מיותרים, או null אם אין נסיגה ממשית.
-function retraceRuns(poly, Apt, Bpt) {
-  if (!poly || poly.length < 4 || !Apt || !Bpt) return null;
-  const A = [Apt.lat, Apt.lng], B = [Bpt.lat, Bpt.lng];
-  const ux = B[0] - A[0], uy = (B[1] - A[1]) * Math.cos(A[0] * Math.PI / 180);
-  const uu = ux * ux + uy * uy || 1e-12;
-  const tOf = (p) => {
-    const px = p[0] - A[0], py = (p[1] - A[1]) * Math.cos(A[0] * Math.PI / 180);
-    return (px * ux + py * uy) / uu;
-  };
-  const segKm = (i, k) => {
-    const cos = Math.cos(poly[i][0] * Math.PI / 180);
-    const dy = poly[k][0] - poly[i][0], dx = (poly[k][1] - poly[i][1]) * cos;
-    return Math.sqrt(dy * dy + dx * dx) * 111.32;
-  };
-  const t = poly.map(tOf);
-  const eps = 0.03; // 3% מאורך A→B — סף-רעש לזיהוי ירידה
-  const runs = [];
-  let frontier = t[0], frontierIdx = 0, i = 1;
-  while (i < poly.length) {
-    if (t[i] >= frontier - eps) {
-      if (t[i] > frontier) { frontier = t[i]; }
-      frontierIdx = i; i++;
-    } else {
-      // נסיגה: מהחזית (frontierIdx) דרך הירידה עד החזרה אל רמת-החזית
-      const start = frontierIdx;
-      let j = i;
-      while (j < poly.length && t[j] < frontier - eps) j++;
-      const end = Math.min(j, poly.length - 1);
-      runs.push([start, end]);
-      i = j; frontierIdx = end;
-    }
-  }
-  if (!runs.length) return null;
-  // איחוד טווחים חופפים/צמודים
-  runs.sort((u, v) => u[0] - v[0]);
-  const merged = [runs[0].slice()];
-  for (let k = 1; k < runs.length; k++) {
-    const last = merged[merged.length - 1];
-    if (runs[k][0] <= last[1] + 1) last[1] = Math.max(last[1], runs[k][1]);
-    else merged.push(runs[k].slice());
-  }
-  // רק אם סך-הנסיגה משמעותי (≥120מ' מצטבר) — אחרת זה רעש קטן (findLoop יטפל)
-  let totalKm = 0;
-  for (const r of merged) for (let s = r[0]; s < r[1]; s++) totalKm += segKm(s, s + 1);
-  if (totalKm < 0.12) return null;
-  return merged.map(r => poly.slice(r[0], r[1] + 1));
-}
-
 // בורר את החלק(ים) ה*מיותר* בתוך מקטע-עיקוף — לא את כל המקטע מתחנה לתחנה. מסמן
 // נקודה כמיותרת אם היא מקיימת *אחד מהשניים* (איחוד, לא או-זה-או-זה): (1) בליטה
 // צידית — רחוקה מקו-הייחוס (>35 מ'); או (2) נסיגה/הלוך-חזור — ה-t שלה (היטל על
@@ -631,41 +576,22 @@ function KavBug() {
       detourPoly = geomRange(line, a, b);
     }
 
-    // divergenceRun / retraceRuns / wastefulRuns — הוגדרו ב-scope המודול (למעלה),
-    // לשימוש משותף עם showCountryIssue (תצוגת "כל הארץ").
+    // divergenceRun / wastefulRuns — הוגדרו ב-scope המודול (למעלה), לשימוש משותף
+    // עם showCountryIssue (תצוגת "כל הארץ"), כדי ששתי התצוגות יזהו אותו "חלק מיותר".
 
     // צביעת אזור הסטייה — אך ורק על גבי הגאומטריה של הקו הנבדק עצמו (נתיב הרישוי).
     // הכתום מסומן *רק מהנקודה שבה הקו הנבדק מתפצל מקו-הייחוס הירוק* ועד שהוא חוזר
     // אליו — לא לאורך כל המקטע. (פרסה = כל ה-U; אם אין גאומטריית ייחוס — נופלים
     // לזיהוי לולאה.)
+    // אזור הסטייה (כתום): אותו זיהוי "חלק מיותר" כמו בתצוגת "כל הארץ" — wastefulRuns
+    // מאחד בליטה-צידית + נסיגה/הלוך-חזור + לולאה, כך ששתי התצוגות (העלאה ידנית ו"כל
+    // הארץ") מסמנות בדיוק אותו דבר. פרסה (spur) מסומנת במלואה (כל ה-U).
     let detourRuns = detourPoly ? [detourPoly] : [];
     const wType0 = line.worst ? line.worst.type : "detour";
     const refG = line.worst && line.worst.refGeom;
-    let divRun = null; // [lo,hi] אינדקסים על detourPoly של אזור ההתפצלות
-    if (wType0 === "spur") {
-      detourRuns = detourPoly ? [detourPoly] : [];
-    } else if (detourPoly && refG && refG.length > 1) {
-      divRun = divergenceRun(detourPoly, refG, 0.035);
-      if (divRun) {
-        detourRuns = [detourPoly.slice(divRun[0], divRun[1] + 1)];
-      } else {
-        // אין סטייה אנכית — ייתכן נסיגה/הלוך-חזור קולינארי (הקו חוזר על אותו כביש)
-        const oab = retraceRuns(detourPoly, line.worst.from, line.worst.to);
-        if (oab) {
-          detourRuns = oab;
-        } else {
-          const loop = findLoop(detourPoly, 0.045, 0.08);
-          detourRuns = loop ? [detourPoly.slice(loop.i, loop.j + 1)] : [detourPoly];
-        }
-      }
-    } else {
-      const oab = detourPoly ? retraceRuns(detourPoly, line.worst.from, line.worst.to) : null;
-      if (oab) {
-        detourRuns = oab;
-      } else {
-        const loop = detourPoly ? findLoop(detourPoly, 0.045, 0.08) : null;
-        if (loop) detourRuns = [detourPoly.slice(loop.i, loop.j + 1)];
-      }
+    if (detourPoly && wType0 !== "spur") {
+      const runs = wastefulRuns(detourPoly, refG, line.worst.from, line.worst.to);
+      detourRuns = runs || [detourPoly];
     }
 
     // ציור הקו הירוק (קו-הייחוס) — לאורך הכביש האמיתי שלו בלבד. refG הוא כבר
