@@ -284,18 +284,36 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
         }
         out.push(g[g.length - 1]); return out;
       };
-      // תקרת-נקודות (לקווים בין-עירוניים ארוכים) ע"י דגימה אחידה — שומר צורת-מסלול
-      // מספקת לרקע. (העיקוף עצמו, seg, נשמר בפירוט מלא.)
+      // חיתוך *צפוף* של ה-shape הגולמי בין שתי תחנות (לפי נקודות-ההצמדה) — עוקב
+      // אחר הכביש בפועל בלי קפיצות. (diag.lineGeometry מדולל ל-40 נק' עבור ה-AI
+      // וגורם ל"ריחוף"; כאן בונים מהמקור הצפוף.) מטפל גם בלולאה (along עולה).
+      const sliceDense = (LL, a, b) => {
+        if (!LL.shape || LL.shape.length < 2 || !LL._snap) return null;
+        let A = LL._snap[a], B = LL._snap[b];
+        if (!A || !B) return null;
+        if (B.along < A.along) { const t = A; A = B; B = t; }
+        const out = [A.proj];
+        for (let k = A.seg + 1; k <= B.seg; k++) {
+          const pt = [LL.shape[k][0], LL.shape[k][1]];
+          const lp = out[out.length - 1];
+          if (!lp || lp[0] !== pt[0] || lp[1] !== pt[1]) out.push(pt);
+        }
+        const lp = out[out.length - 1];
+        if (!lp || lp[0] !== B.proj[0] || lp[1] !== B.proj[1]) out.push(B.proj);
+        return out.length > 1 ? out : null;
+      };
+      const segIdx = it.segIdx && it.segIdx[0];
+      let seg = (segIdx != null) ? sliceDense(L, segIdx, segIdx + 1) : null;
+      if (!(seg && seg.length > 1)) seg = (d.lineGeometry && d.lineGeometry.length > 1) ? d.lineGeometry : ((L._geom && segIdx != null && L._geom[segIdx]) || null);
+      // תקרת-נקודות לרקע (לקווים ארוכים) — מגביל נפח. seg (העיקוף) נשאר צפוף.
       const cap = (g, n) => {
         if (!g || g.length <= n) return g;
         const out = []; const step = (g.length - 1) / (n - 1);
         for (let k = 0; k < n; k++) out.push(g[Math.round(k * step)]);
         return out;
       };
-      const segIdx = it.segIdx && it.segIdx[0];
-      const seg = (d.lineGeometry && d.lineGeometry.length > 1) ? d.lineGeometry
-        : (L._geom && segIdx != null && L._geom[segIdx]) || null;
-      const lineShape = cap(thin(L.shape, 0.0004), 180); // דילול ~20 מ' + תקרת 180 נק' (רקע)
+      seg = thin(seg, 0.00003);            // ~5 מ' — צפוף, עוקב אחר הכביש
+      const lineShape = cap(thin(L.shape, 0.0006), 220); // ~25 מ' + תקרת 220 נק' (רקע)
       const excessKm = +(it.km || d.excessKm || 0).toFixed(3);
       const tripsDay = L._tripsDay || 0;
       issues.push({
