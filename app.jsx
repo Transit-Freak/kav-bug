@@ -127,31 +127,6 @@ function findLoop(poly, thr, minArc) {
   return best;
 }
 
-// אזור ההתפצלות: תת-הקטע של מסלול הנבדק שבו הוא *מתרחק* מקו-הייחוס (הירוק)
-// ביותר מ-thrKm — כלומר מהנקודה שבה מתחילה ההתפצלות מהקו האחר ועד החזרה אליו.
-// מחזיר [lo,hi] (אינדקסים) או null. משותף לתצוגת-עיר ולתצוגת "כל הארץ".
-function divergenceRun(testedPoly, refPoly, thrKm) {
-  if (!testedPoly || testedPoly.length < 2 || !refPoly || refPoly.length < 2) return null;
-  const distToRefKm = (pt) => {
-    let best = Infinity;
-    for (const r of refPoly) {
-      const cos = Math.cos(pt[0] * Math.PI / 180);
-      const dy = r[0] - pt[0], dx = (r[1] - pt[1]) * cos;
-      const d = Math.sqrt(dy * dy + dx * dx) * 111.32;
-      if (d < best) best = d;
-    }
-    return best;
-  };
-  let lo = -1, hi = -1;
-  for (let i = 0; i < testedPoly.length; i++) {
-    if (distToRefKm(testedPoly[i]) > thrKm) { if (lo === -1) lo = i; hi = i; }
-  }
-  if (lo === -1) return null;
-  // הרחבה בנקודה לכל צד כך שהכתום יתחבר חזרה לכחול בנקודת ההתפצלות/האיחוי.
-  lo = Math.max(0, lo - 1); hi = Math.min(testedPoly.length - 1, hi + 1);
-  return [lo, hi];
-}
-
 // בורר את החלק(ים) ה*מיותר* בתוך מקטע-עיקוף — לא את כל המקטע מתחנה לתחנה. מסמן
 // נקודה כמיותרת אם היא מקיימת *אחד מהשניים* (איחוד, לא או-זה-או-זה): (1) בליטה
 // צידית — רחוקה מקו-הייחוס (>35 מ'); או (2) נסיגה/הלוך-חזור — ה-t שלה (היטל על
@@ -486,16 +461,14 @@ function KavBug() {
           .addTo(grp).bindTooltip(`החלק המיותר · ${fmt(issue.excessKm)} ק"מ`, { className: "seg-tip", sticky: true });
       });
     }
-    // קו-ההשוואה (ירוק) — שכבה עליונה, חתוך לאזור ההתפצלות בלבד (סימטרי לכתום),
-    // כדי שלא "יתחיל הרבה לפני" לאורך הרגל המשותפת.
-    let refDraw = ref;
-    if (ref && ref.length > 1 && issue.seg && issue.seg.length > 1) {
-      const gRun = divergenceRun(ref, issue.seg, 0.035);
-      if (gRun) refDraw = ref.slice(gRun[0], gRun[1] + 1);
-    }
+    // קו-ההשוואה (ירוק) — *המסלול המלא* של קו-הייחוס בין שתי תחנות-הקצה: זו הדרך
+    // הקצרה שהקו הנבדק *היה יכול* לנסוע. מציגים אותו במלואו (לא חתוך) כדי שרואים
+    // בבירור את החלופה הקצרה. (חיתוך-לפי-התפצלות הסתיר אותו לרסיס כשהקו הנבדק
+    // משוטט בשטח — קו 36.) מצויר כשכבה עליונה.
+    const refDraw = ref;
     if (refDraw && refDraw.length > 1) {
       L.polyline(refDraw, { color: ALT, weight: 6, opacity: 0.95, dashArray: "2 9", lineCap: "round", lineJoin: "round" })
-        .addTo(grp).bindTooltip(`מסלול הקו להשוואה · קו ${issue.ref}`, { className: "seg-tip", sticky: true });
+        .addTo(grp).bindTooltip(`הדרך הקצרה — קו ${issue.ref}`, { className: "seg-tip", sticky: true });
     }
     const fit = (shape && shape.length > 1) ? shape : (seg || []).concat(ref || []);
     if (fit.length) map.fitBounds(L.latLngBounds(fit), { padding: [50, 50], maxZoom: 16 });
@@ -613,8 +586,8 @@ function KavBug() {
       detourPoly = geomRange(line, a, b);
     }
 
-    // divergenceRun / wastefulRuns — הוגדרו ב-scope המודול (למעלה), לשימוש משותף
-    // עם showCountryIssue (תצוגת "כל הארץ"), כדי ששתי התצוגות יזהו אותו "חלק מיותר".
+    // wastefulRuns — הוגדר ב-scope המודול (למעלה), לשימוש משותף עם showCountryIssue
+    // (תצוגת "כל הארץ"), כדי ששתי התצוגות יזהו אותו "חלק מיותר".
 
     // צביעת אזור הסטייה — אך ורק על גבי הגאומטריה של הקו הנבדק עצמו (נתיב הרישוי).
     // הכתום מסומן *רק מהנקודה שבה הקו הנבדק מתפצל מקו-הייחוס הירוק* ועד שהוא חוזר
@@ -636,16 +609,10 @@ function KavBug() {
     // מציירים אותו *כפי שהוא* — בלי מחברים ישרים אל המסלול הכחול (אותם מחברים הם
     // שגרמו לקו "לרחף" ולחצות בין בניינים). אם אין גאומטריית-כביש אמיתית, refG
     // יהיה null (נקבע ב-data.js) — ואז פשוט לא מציירים ירוק, עדיף מאשר קו מרחף.
-    // חיתוך הירוק לאזור-ההתפצלות בלבד — סימטרי לכתום. refG מכיל את כל מסלול
-    // קו-הייחוס בין שתי תחנות-הקצה, כולל "רגל" משותפת ארוכה שרצה לצד הקו הנבדק
-    // *לפני* נקודת הפיצול — מה שגרם לירוק "להתחיל הרבה לפני". כמו שהכתום נחתך
-    // לקטע שמתרחק מהירוק, כך הירוק נחתך לקטע שמתרחק מהכתום: שומרים רק את החלק
-    // שבו הירוק נפרד בפועל מהקו הנבדק, ומגיעים בדיוק לנקודת ההתפצלות.
-    let refDraw = refG;
-    if (refG && refG.length > 1 && detourPoly && detourPoly.length > 1) {
-      const gRun = divergenceRun(refG, detourPoly, 0.035);
-      if (gRun) refDraw = refG.slice(gRun[0], gRun[1] + 1);
-    }
+    // מציגים את הירוק *במלואו* (כל מסלול קו-הייחוס בין שתי תחנות-הקצה) — זו הדרך
+    // הקצרה שהקו הנבדק היה יכול לנסוע, וחשוב שהיא תיראה במלואה. (חיתוך קודם לפי
+    // אזור-ההתפצלות הסתיר אותה לרסיס כשהקו הנבדק משוטט בשטח, כמו קו 36 בבאר שבע.)
+    const refDraw = refG;
 
     let labelMid = null;
     const wType = line.worst ? line.worst.type : "detour";
@@ -674,7 +641,7 @@ function KavBug() {
         color: ALT, weight: 6, opacity: 0.95, dashArray: "2 9",
         lineCap: "round", lineJoin: "round",
       }).addTo(grp).bindTooltip(
-        `מסלול הקו להשוואה · קו ${line.worst.refNumber} · <span class="km">${fmt(line.worst.refKm)}</span> ק"מ`,
+        `הדרך הקצרה — קו ${line.worst.refNumber} · <span class="km">${fmt(line.worst.refKm)}</span> ק"מ`,
         { className: "seg-tip", sticky: true }
       );
     }
@@ -1222,7 +1189,7 @@ ${engineFacts}
           <div className="map-legend">
             <div className="row"><span className="swatch normal"></span>מסלול הקו עם התקלה</div>
             <div className="row"><span className="swatch detour"></span>הקטע המיותר (עיקוף)</div>
-            <div className="row"><span className="swatch alt"></span>מסלול הקו להשוואה</div>
+            <div className="row"><span className="swatch alt"></span>הדרך הקצרה (קו להשוואה)</div>
             <div className="row"><span className="swatch stop"></span>תחנה</div>
           </div>
           <div className="map-toggle">
