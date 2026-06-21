@@ -128,26 +128,48 @@ function findLoop(poly, thr, minArc) {
 }
 
 // בורר את החלק(ים) ה*מיותר* בתוך מקטע-עיקוף — לא את כל המקטע מתחנה לתחנה. מסמן
-// נקודה כמיותרת אם היא מקיימת *אחד מהשניים* (איחוד, לא או-זה-או-זה): (1) בליטה
-// צידית — רחוקה מקו-הייחוס (>35 מ'); או (2) נסיגה/הלוך-חזור — ה-t שלה (היטל על
-// ציר A→B) נמוך מה"חזית" המקסימלית שכבר הושגה, כלומר היא חוזרת על קטע-ציר שכבר
-// כוסה. האיחוד הכרחי: בהלוך-חזור על כביש משותף (קו 20), הכיכר בקצה לבדה רחוקה
-// מהירוק — אבל כל ה"הלוך" וה"חזור" הם נסיגה, ולכן מסומנים. מחזיר מערך פוליגונים,
-// או null כשאין חלק מובהק (אז הקורא מצייר את כל המקטע). from/to = תחנות-הקצה.
+// נקודה כמיותרת אם היא מקיימת *אחד מהשניים* (איחוד): (1) בליטה צידית — רחוקה
+// מקו-הייחוס (>35 מ'); או (2) נסיגה/הלוך-חזור — היא חוזרת אחורה *לאורך קו-הייחוס*
+// (כפילות-כיסוי). מדידת-הנסיגה לאורך הירוק (ולא לפי ציר A→B ישר) חיונית: אם גם
+// הירוק עושה את אותה "עקיפה" (קו 36 בבאר שבע: שני הקווים עולים צפונה לצומת
+// וחוזרים *לפני* הקיבוץ), זו אינה נסיגה מיותרת — ההתקדמות-לאורך-הירוק נשארת
+// מונוטונית, ולכן אינה מסומנת. בלי קו-ייחוס נופלים לנסיגה לפי ציר A→B (גיבוי).
+// מחזיר מערך פוליגונים, או null כשאין חלק מובהק (אז הקורא מצייר את כל המקטע).
 function wastefulRuns(detourPoly, refG, from, to) {
   if (!detourPoly || detourPoly.length < 2) return null;
   const n = detourPoly.length;
   const mask = new Array(n).fill(false);
-  // (1) בליטה צידית מקו-הייחוס
-  if (refG && refG.length > 1)
-    for (let i = 0; i < n; i++) if (distToPoly(detourPoly[i], refG) > 0.035) mask[i] = true;
-  // (2) נסיגה/הלוך-חזור מתחת ל"חזית" על ציר A→B
-  if (from && to && n >= 4) {
+  if (refG && refG.length > 1) {
+    // הצמדת כל נקודה לקו-הייחוס: perp = מרחק צידי (מ'), arc = אורך-קשת לאורך הירוק.
+    const havM = (a, b) => hav2(a, b) * 1000;
+    const refCum = [0];
+    for (let k = 1; k < refG.length; k++) refCum[k] = refCum[k - 1] + havM(refG[k - 1], refG[k]);
+    const proj = (p) => {
+      const kx = 111320 * Math.cos(p[0] * Math.PI / 180), ky = 110570;
+      const PX = p[1] * kx, PY = p[0] * ky; let min = Infinity, arc = 0;
+      for (let j = 1; j < refG.length; j++) {
+        const ax = refG[j - 1][1] * kx, ay = refG[j - 1][0] * ky, bx = refG[j][1] * kx, by = refG[j][0] * ky;
+        const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1e-9;
+        let t = ((PX - ax) * dx + (PY - ay) * dy) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const d = Math.hypot(PX - (ax + t * dx), PY - (ay + t * dy));
+        if (d < min) { min = d; arc = refCum[j - 1] + t * Math.sqrt(L2); }
+      }
+      return { perp: min, arc };
+    };
+    let frontier = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const pr = proj(detourPoly[i]);
+      if (pr.perp > 35) mask[i] = true;                       // (1) בליטה/חריגה מהירוק
+      if (pr.arc > frontier) frontier = pr.arc;
+      else if (pr.arc < frontier - 50) mask[i] = true;        // (2) נסיגה לאורך הירוק (>50 מ')
+    }
+  } else if (from && to && n >= 4) {
+    // גיבוי ללא קו-ייחוס: נסיגה מתחת ל"חזית" על ציר A→B הישר
     const A = [from.lat, from.lng], B = [to.lat, to.lng];
     const ux = B[0] - A[0], uy = (B[1] - A[1]) * Math.cos(A[0] * Math.PI / 180);
     const uu = ux * ux + uy * uy || 1e-12;
     const tOf = (p) => { const px = p[0] - A[0], py = (p[1] - A[1]) * Math.cos(A[0] * Math.PI / 180); return (px * ux + py * uy) / uu; };
-    const eps = 0.03; // 3% מאורך הציר — סף-רעש לזיהוי ירידה
+    const eps = 0.03;
     let frontier = -Infinity;
     for (let i = 0; i < n; i++) { const t = tOf(detourPoly[i]); if (t > frontier) frontier = t; else if (t < frontier - eps) mask[i] = true; }
   }
