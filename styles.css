@@ -91,6 +91,7 @@ html, body {
   display: grid; place-items: center;
   position: relative;
   box-shadow: var(--shadow-sm);
+  cursor: pointer; text-decoration: none;
 }
 .brand .glyph svg { display: block; }
 .brand h1 {

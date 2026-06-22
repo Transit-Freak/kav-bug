@@ -290,14 +290,14 @@ function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onRepo
   return (
     <header className="topbar">
       <div className="brand">
-        <div className="glyph">
+        <a className="glyph" href="https://www.rail.co.il/?page=routePlan&step=origin" target="_blank" rel="noopener noreferrer" aria-label="מתכנן נסיעות">
           <svg viewBox="0 0 140 90" width="22" height="22" aria-hidden="true">
             <line x1="18" y1="64" x2="122" y2="64" stroke="#1f9d57" strokeWidth="9" strokeLinecap="round" />
             <polyline points="18,64 44,18 70,64 96,18 122,64" fill="none" stroke="#ef8a17" strokeWidth="9.5" strokeLinecap="round" strokeLinejoin="round" />
             <circle cx="18" cy="64" r="9" fill="#fff" />
             <circle cx="122" cy="64" r="9" fill="#fff" />
           </svg>
-        </div>
+        </a>
         <div>
           <h1>קו באג <span className="beta">בטא</span> <span
             className="ver" role="button" tabIndex={0} title="מה חדש בגרסה זו"
