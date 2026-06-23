@@ -114,12 +114,17 @@ async function railFullStops(fromCode, toCode, hour, trainNum, codeName) {
       if (r.status === 429 || r.status >= 500) { await sleep(1500 * (attempt + 1)); continue; }
       if (!r.ok) return null;
       const j = await r.json();
-      for (const t of (j.result && j.result.travels) || [])
-        for (const x of t.trains)
-          if (x.trainNumber == trainNum) {
-            const full = [x.orignStation, ...(x.stopStations || []).map((s) => s.stationId), x.destinationStation];
-            return full.filter((id, i) => i === 0 || id !== full[i - 1]).map((id) => canon(codeName[id] || ("?" + id)));
-          }
+      for (const t of (j.result && j.result.travels) || []) {
+        // רק נסיעה *ישירה* (רכבת אחת): מונע התאמת רכבת כקטע-ביניים במסע עם מעבר —
+        // שם רצף-העצירות שלה חלקי ויוצר "פער" מדומה (כמו רכבת 9701: הרצליה↔נתב"ג
+        // דרך החלפה בת"א, שבה הרגל השנייה לא מכסה את הרצליה).
+        if ((t.trains || []).length !== 1) continue;
+        const x = t.trains[0];
+        if (x.trainNumber == trainNum) {
+          const full = [x.orignStation, ...(x.stopStations || []).map((s) => s.stationId), x.destinationStation];
+          return full.filter((id, i) => i === 0 || id !== full[i - 1]).map((id) => canon(codeName[id] || ("?" + id)));
+        }
+      }
       return null; // הרכבת לא רצה היום/לא נמצאה
     } catch (e) { await sleep(1000 * (attempt + 1)); }
   }
