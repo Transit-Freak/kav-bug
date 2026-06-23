@@ -290,7 +290,7 @@ function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onRepo
   return (
     <header className="topbar">
       <div className="brand">
-        <a className="glyph" href="https://www.rail.co.il/?page=routePlan&step=origin" target="_blank" rel="noopener noreferrer" aria-label="מתכנן נסיעות">
+        <a className="glyph" href="rail.html" aria-label="קו באג רכבות — פערי לוח-זמנים">
           <svg viewBox="0 0 140 90" width="22" height="22" aria-hidden="true">
             <line x1="18" y1="64" x2="122" y2="64" stroke="#1f9d57" strokeWidth="9" strokeLinecap="round" />
             <polyline points="18,64 44,18 70,64 96,18 122,64" fill="none" stroke="#ef8a17" strokeWidth="9.5" strokeLinecap="round" strokeLinejoin="round" />

@@ -9,8 +9,8 @@
     "test:mount": "node test/mount-smoke.js"
   },
   "devDependencies": {
-    "@babel/core": "^7",
-    "@babel/preset-react": "^7",
+    "@babel/core": "^7.24.0",
+    "@babel/preset-react": "^7.24.0",
     "jsdom": "^24",
     "react": "^18",
     "react-dom": "^18"

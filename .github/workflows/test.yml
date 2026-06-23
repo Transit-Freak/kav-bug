@@ -23,6 +23,7 @@ jobs:
         with:
           node-version: "20"
       - name: התקנת תלויות-בדיקה
-        run: npm install --no-save jsdom react@18 react-dom@18 @babel/core @babel/preset-react
+        # מקבעים ל-Babel 7 — תואם ל-@babel/standalone שבאתר החי (runtime classic).
+        run: npm install --no-save jsdom react@18 react-dom@18 "@babel/core@^7" "@babel/preset-react@^7"
       - name: בדיקות (טרנספילציה + mount)
         run: npm test

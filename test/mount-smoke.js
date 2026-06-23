@@ -58,7 +58,10 @@ const fakeFetch = async (url) => {
 global.fetch = window.fetch = fakeFetch;
 
 // ---------- 4) טעינת components.jsx האמיתי (כמו באתר) ----------
-const src = babel.transformFileSync(path.join(ROOT, "components.jsx"), { presets: ["@babel/preset-react"] }).code;
+// runtime classic = React.createElement (כמו באתר החי שטוען React כגלובל) — לא
+// "automatic" שמזריק import ל-react/jsx-runtime ושובר את ה-eval כאן.
+const REACT_PRESET = ["@babel/preset-react", { runtime: "classic" }];
+const src = babel.transformFileSync(path.join(ROOT, "components.jsx"), { presets: [REACT_PRESET] }).code;
 try { (0, eval)(src); } catch (e) { console.error("✗ components.jsx לא נטען:", e.message); process.exit(1); }
 const { CountryModal, TopBar } = window;
 if (!CountryModal || !TopBar) { console.error("✗ CountryModal/TopBar לא נחשפו על window"); process.exit(1); }
@@ -72,7 +75,7 @@ try {
   const e = appSrc.indexOf("\nfunction KavBug", s);
   if (s >= 0 && e > s) {
     const fnJsx = appSrc.slice(s, e);
-    const fnCode = babel.transform(fnJsx, { presets: ["@babel/preset-react"] }).code;
+    const fnCode = babel.transformSync(fnJsx, { presets: [REACT_PRESET] }).code;
     CountryIssuePanel = (0, eval)("(function(){ " + fnCode + "; return CountryIssuePanel; })()");
   }
 } catch (e) { console.error("אזהרה: CountryIssuePanel לא חולץ —", e.message); }
