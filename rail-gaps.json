@@ -1,11 +1,11 @@
 {
- "generatedAt": "2026-06-23T07:41:24.074Z",
+ "generatedAt": "2026-06-23T08:06:26.622Z",
  "sources": {
   "gtfs": "gtfs.mot.gov.il (משרד התחבורה)",
   "rail": "rail-api.rail.co.il (רכבת ישראל)"
  },
  "date": "2026-06-23",
- "trainsChecked": 397,
+ "trainsChecked": 560,
  "gapsCount": 3,
  "gaps": [
   {
