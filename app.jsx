@@ -275,7 +275,7 @@ function CountryIssuePanel({ issue, onBack, onClose }) {
 function KavBug() {
   const D = window.KavBugData;
   const [query, setQuery] = React.useState("");
-  const [cityName, setCityName] = React.useState("באר שבע");
+  const [cityName, setCityName] = React.useState(""); // ריק = פותחים על הדוח הארצי
   const [activeIdx, setActiveIdx] = React.useState(null);
   const [panelWidth, setPanelWidth] = React.useState(396);
   const draggingRef = React.useRef(false);
@@ -283,8 +283,7 @@ function KavBug() {
   const [basemap, setBasemap] = React.useState("clean");
   const [uploadOpen, setUploadOpen] = React.useState(false);
   const [infoOpen, setInfoOpen] = React.useState(false);
-  const [countryOpen, setCountryOpen] = React.useState(false);
-  const [countryCity, setCountryCity] = React.useState(null); // עיר התחלתית לתצוגת "כל הארץ"
+  const [countryCity, setCountryCity] = React.useState(null); // סינון-עיר לדוח הארצי (מחיפוש ה-TopBar)
   const [countryIssue, setCountryIssue] = React.useState(null); // העיקוף שנבחר מ"כל הארץ" (לפאנל הצדדי)
 
   // מצב "דווח על תקלה"
@@ -495,8 +494,7 @@ function KavBug() {
     const fit = (shape && shape.length > 1) ? shape : (seg || []).concat(ref || []);
     if (fit.length) map.fitBounds(L.latLngBounds(fit), { padding: [50, 50], maxZoom: 16 });
     else if (issue.lat != null) map.setView([issue.lat, issue.lng], 15);
-    setCountryIssue(issue); // הצגת פרטי-העיקוף בפאנל הצדדי (במקום "בחרו עיר")
-    setCountryOpen(false);
+    // לא מחליפים פאנל — רשימת-הדוח נשארת (גלילה/סינון נשמרים), המפה מתעדכנת.
     setTimeout(() => map.invalidateSize(), 80);
   };
 
@@ -1144,6 +1142,9 @@ ${engineFacts}
   };
 
   const enterReport = () => {
+    // "דווח על תקלה" צריך עיר טעונה. אם פתוחים על הדוח הארצי (בלי עיר) — טוענים
+    // עיר-הדגמה כברירת-מחדל כדי שהמצב יעבוד (אפשר להעלות GTFS לעיר אחרת).
+    if (!cityName) setCityName(D.cityNames[0] || "באר שבע");
     setReportMode(true);
     setActiveIdx(null);
     setCountryIssue(null);
@@ -1162,11 +1163,10 @@ ${engineFacts}
         onUpload={() => { setJob(null); setUploadOpen(true); }}
         onInfo={() => setInfoOpen(true)}
         onReport={enterReport}
-        onCountry={(c) => { setCountryCity(c || null); setCountryOpen(true); }}
+        onCountry={(c) => { setCityName(""); setCountryIssue(null); setCountryCity(c || null); }}
       />
       <UploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} onProcess={processFile} onCancel={cancelJob} job={job} />
       <InfoModal open={infoOpen} onClose={() => setInfoOpen(false)} />
-      <CountryModal open={countryOpen} onClose={() => setCountryOpen(false)} onPick={showCountryIssue} initialCity={countryCity} />
       <div className="body" style={{ "--panel-w": panelWidth + "px" }}>
         {reportMode && city ? (
           <ReportPanel
@@ -1179,18 +1179,13 @@ ${engineFacts}
             onExport={exportReport} onEmail={emailReport} onExit={exitReport}
           />
         ) : countryIssue ? (
-          <CountryIssuePanel issue={countryIssue} onBack={() => setCountryOpen(true)} onClose={() => setCountryIssue(null)} />
+          <CountryIssuePanel issue={countryIssue} onBack={() => setCountryIssue(null)} onClose={() => setCountryIssue(null)} />
         ) : city ? (
           <Panel city={city} activeIdx={activeIdx} setActiveIdx={setActiveIdx} aiReview={aiReview} />
         ) : (
-          <aside className="panel">
-            <div className="empty">
-              <div className="e-inner">
-                <h2>בחרו עיר</h2>
-                <p>הקלידו שם עיר כדי לסרוק את קווי התחבורה שלה, או העלו קובץ GTFS לערים נוספות.</p>
-              </div>
-            </div>
-          </aside>
+          // ברירת-המחדל: הדוח הארצי *ישר בפאנל* (בלי חלון). חיפוש-עיר מצמצם אותו,
+          // לחיצה על שורה מציגה על המפה. countryCity מגיע מחיפוש-העיר ב-TopBar.
+          <CountryModal inline onPick={showCountryIssue} initialCity={countryCity} />
         )}
         <div className="col-resizer" onMouseDown={startResize} onTouchStart={startResize} title="גרור לשינוי רוחב הפאנל">
           <span className="cr-grip"></span>

@@ -309,9 +309,6 @@ function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onRepo
       </div>
       <div className="spacer"></div>
       <button className="icon-btn" onClick={onInfo} title="איך זה עובד">?</button>
-      <button className="report-btn" onClick={() => onCountry()} title="דוח ארצי מוכן — כל העיקופים בארץ">
-        <span className="u-ico">🌍</span>כל הארץ
-      </button>
       <button className="report-btn" onClick={onReport} title="דווח על קו עם תקלה שלא זוהתה">
         <span className="u-ico">⚑</span>דווח על תקלה
       </button>
@@ -396,7 +393,7 @@ function WhatsNewModal({ open, onClose }) {
 // חלון "כל הארץ" — טוען דוח ארצי מוכן (country-scan.json) שנסרק מראש ע"י
 // scan-country.js (ומתעדכן אוטומטית ע"י GitHub Action). מאפשר לראות את כל
 // העיקופים בארץ מהטלפון בלי לעבד GTFS — פשוט קורא תוצאה מוכנה.
-function CountryModal({ open, onClose, onPick, initialCity }) {
+function CountryModal({ open, onClose, onPick, initialCity, inline }) {
   const [data, setData] = React.useState(null);
   const [err, setErr] = React.useState(null);
   const [filter, setFilter] = React.useState("אמיתי");
@@ -417,17 +414,19 @@ function CountryModal({ open, onClose, onPick, initialCity }) {
       .catch(() => setCityGeo({ status: "error" }));
   }, []);
   React.useEffect(() => {
-    if (!open || data || err) return;
+    if ((!open && !inline) || data || err) return;
     fetch("country-scan.json?v=" + (window.KAVBUG_BUILD || ""))
       .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(setData)
       .catch((e) => setErr(e.message || String(e)));
-  }, [open, data, err]);
-  // עיר התחלתית (כשנפתח מתוך חיפוש-העיר הראשי)
+  }, [open, inline, data, err]);
+  // עיר התחלתית (מחיפוש-העיר הראשי). null מנקה את הסינון (חזרה לכל הארץ).
   React.useEffect(() => {
-    if (open && typeof initialCity === "string" && initialCity) { setCityText(initialCity); lookupCity(initialCity); }
-  }, [open, initialCity, lookupCity]);
-  if (!open) return null;
+    if (!open && !inline) return;
+    if (typeof initialCity === "string" && initialCity) { setCityText(initialCity); lookupCity(initialCity); }
+    else if (initialCity === null) { setCity(null); setCityText(""); setCityGeo({ status: "idle" }); }
+  }, [open, inline, initialCity, lookupCity]);
+  if (!open && !inline) return null;
   const issues = (data && data.issues) || [];
   const qn = q.trim();
   const bb = city && city.bbox;
@@ -441,13 +440,8 @@ function CountryModal({ open, onClose, onPick, initialCity }) {
   const cityReal = cityIssues.filter((i) => i.verdict === "אמיתי").length;
   const cityWaste = Math.round(cityIssues.filter((i) => i.verdict === "אמיתי").reduce((s, i) => s + (i.wasteDayKm || 0), 0));
   const vClass = (v) => v === "אמיתי" ? "real" : v === "רעש" ? "noise" : v === "ספק" ? "doubt" : v === "כיסוי לגיטימי" ? "cover" : "incomp";
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal country-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h2>{city ? city.name : "כל הארץ"}</h2>
-          <button className="x" onClick={onClose}>×</button>
-        </div>
+  const content = (
+    <>
         <div className="country-city">
           <input
             className="country-cityinput" value={cityText}
@@ -508,6 +502,24 @@ function CountryModal({ open, onClose, onPick, initialCity }) {
             </div>
           </>
         )}
+    </>
+  );
+  if (inline) {
+    return (
+      <aside className="panel country-panel">
+        <div className="modal-head"><h2>{city ? city.name : "כל הארץ — עיקופים"}</h2></div>
+        {content}
+      </aside>
+    );
+  }
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal country-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>{city ? city.name : "כל הארץ"}</h2>
+          <button className="x" onClick={onClose}>×</button>
+        </div>
+        {content}
       </div>
     </div>
   );

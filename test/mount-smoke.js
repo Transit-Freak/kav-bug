@@ -132,26 +132,25 @@ async function mount(element) {
     else ok("CountryModal עם שם-עיר תקין נטען וחיפש עיר");
   }
 
-  // (ד) TopBar — לחיצה על "כל הארץ" חייבת לקרוא ל-onCountry *בלי* להעביר event
-  //     (זה היה שורש הבאג: onClick={onCountry} העביר את ה-event כ-initialCity).
+  // (ד) CountryModal inline — הדוח הארצי *ישר בפאנל* (בלי חלון/overlay). חייב
+  //     לטעון את הדוח ולהציג תוכן, ולרנדר כ-<aside class="panel"> ולא כ-modal.
   {
-    let calledWith = "NOT_CALLED";
-    const { thrown, host } = await mount(React.createElement(TopBar, {
+    const { thrown, text, host } = await mount(React.createElement(CountryModal, { inline: true, onPick: () => {} }));
+    if (thrown) bad("CountryModal(inline) זרק: " + thrown.message);
+    else if (!text || !/עיקופים|הכרעה|קו/.test(text)) bad("CountryModal(inline) לא הציג את הדוח");
+    else if (host.querySelector(".modal-overlay")) bad("CountryModal(inline) רינדר חלון (overlay) במקום פאנל");
+    else if (!host.querySelector(".country-panel")) bad("CountryModal(inline) לא רינדר כ-.country-panel");
+    else ok("CountryModal(inline) — הדוח ישר בפאנל (בלי חלון)");
+  }
+
+  // (ד2) TopBar — נטען בלי להתרסק (הכפתור 'כל הארץ' הוסר; החיפוש דרך onCountry)
+  {
+    const { thrown } = await mount(React.createElement(TopBar, {
       query: "", setQuery: () => {}, onSelect: () => {}, cityNames: [],
-      onUpload: () => {}, onInfo: () => {}, onReport: () => {},
-      onCountry: (c) => { calledWith = c; },
+      onUpload: () => {}, onInfo: () => {}, onReport: () => {}, onCountry: () => {},
     }));
     if (thrown) bad("TopBar זרק: " + thrown.message);
-    else {
-      const btn = host.querySelector(".report-btn");
-      if (!btn) bad("TopBar — כפתור 'כל הארץ' (.report-btn) לא נמצא");
-      else {
-        await act(async () => { btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true })); });
-        if (calledWith === "NOT_CALLED") bad("לחיצה על 'כל הארץ' לא קראה ל-onCountry");
-        else if (calledWith !== undefined) bad("דליפת-event! onCountry נקרא עם " + (typeof calledWith) + " במקום undefined");
-        else ok("'כל הארץ' קורא ל-onCountry() בלי להעביר event");
-      }
-    }
+    else ok("TopBar נטען (בלי כפתור 'כל הארץ')");
   }
 
   // (ה) CountryIssuePanel — לחיצה על קו ב"כל הארץ" מציגה את פרטי-העיקוף בפאנל

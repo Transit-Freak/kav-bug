@@ -806,6 +806,11 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
 .country-table td.num { font-family: "Spline Sans Mono", monospace; white-space: nowrap; }
 .country-table td.seg { line-height: 1.4; }
 .country-table td.empty { text-align: center; color: var(--ink-faint); padding: 22px; }
+/* הדוח הארצי ישר בפאנל (לא בחלון) */
+.country-panel { padding: 14px 16px; overflow-y: auto; }
+.country-panel .modal-head { margin-bottom: 8px; }
+.country-panel .modal-head h2 { font-size: 19px; }
+.country-panel .country-table { max-height: none; overflow-y: visible; }
 .vd { display: inline-block; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .vd-real { background: var(--high-bg); color: var(--high); }
 .vd-noise { background: var(--line); color: var(--ink-soft); }
