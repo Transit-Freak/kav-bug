@@ -560,6 +560,7 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
 }
 .suggest-country .plus { width: 18px; height: 18px; display: grid; place-items: center; flex-shrink: 0; background: none; }
 .suggest-upload { color: var(--ink-soft) !important; font-weight: 600 !important; }
+.suggest .demo-tag { color: var(--ink-faint); font-size: 12px; font-weight: 500; }
 
 /* ----- חיפוש-עיר בתוך "כל הארץ" ----- */
 .country-city { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 10px; }

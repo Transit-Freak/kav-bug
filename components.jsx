@@ -321,30 +321,34 @@ function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onRepo
       <div className="search" ref={ref}>
         <input
           value={query}
-          placeholder="הקלידו שם עיר…"
+          placeholder="הקלידו שם עיר (למשל: ירושלים)…"
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onKeyDown={(e) => {
-            if (e.key !== "Enter" || !q) return;
-            if (matches[0]) { onSelect(matches[0]); setOpen(false); }
-            else if (onCountry) { onCountry(q); setOpen(false); }
+            if (e.key !== "Enter" || !q || !onCountry) return;
+            setOpen(false);
+            // כל עיר → ישר מהדוח הארצי (בלי העלאה). "כל הארץ"/"הארץ" → כל הארץ.
+            onCountry(/^(כל ?הארץ|הארץ|הכל)$/.test(q) ? undefined : q);
           }}
         />
         <span className="icon"></span>
         {open && (matches.length > 0 || q) && (
           <div className="suggest">
-            {matches.map((c) => (
-              <button key={c} onClick={() => { onSelect(c); setOpen(false); }}>
-                <span className="dot"></span>{c}
-              </button>
-            ))}
+            {/* ראשי: כל עיר ישר מהדוח הארצי — בלי העלאה */}
             {q && onCountry && (
               <button className="suggest-country" onClick={() => { setOpen(false); onCountry(q); }}>
                 <span className="plus">🌍</span>
-                <span>הצג עיקופים ב“{q}” מהדוח הארצי — מיד, בלי להעלות קובץ</span>
+                <span>הצג עיקופים ב“{q}” — מיד מהדוח הארצי, בלי להעלות קובץ</span>
               </button>
             )}
-            {matches.length === 0 && q && (
+            {/* ערים-הדגמה מובְנות (דמו) */}
+            {matches.map((c) => (
+              <button key={c} onClick={() => { onSelect(c); setOpen(false); }}>
+                <span className="dot"></span>{c} <span className="demo-tag">· הדגמה</span>
+              </button>
+            ))}
+            {/* העמקה אופציונלית */}
+            {q && (
               <button className="suggest-upload" onClick={() => { setOpen(false); onUpload(); }}>
                 <span className="plus">+</span>
                 <span>או: העלו GTFS כדי לחקור את “{q}” לעומק</span>
