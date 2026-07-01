@@ -379,6 +379,7 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
 .map-legend .swatch.bad { background: var(--high); height: 5px; }
 .map-legend .swatch.detour { background: #ef8a17; height: 5px; }
 .map-legend .swatch.alt { background: #1f9d57; height: 5px; }
+.map-legend .swatch.opt { background: #7c3aed; height: 5px; }
 .map-legend .swatch.stop { width: 11px; height: 11px; border-radius: 50%; background: white; border: 3px solid #2563eb; }
 
 .map-toggle {

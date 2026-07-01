@@ -491,6 +491,11 @@ function KavBug() {
       L.polyline(refDraw, { color: ALT, weight: 6, opacity: 0.95, dashArray: "2 9", lineCap: "round", lineJoin: "round" })
         .addTo(grp).bindTooltip(`הדרך הקצרה — קו ${issue.ref}`, { className: "seg-tip", sticky: true });
     }
+    // הדרך הקצרה-בכביש לפי ניווט אובייקטיבי (OSRM), אם חושבה — סגול, מקווקו דק.
+    if (issue.optRoute && issue.optRoute.length > 1) {
+      L.polyline(issue.optRoute, { color: "#7c3aed", weight: 5, opacity: 0.9, dashArray: "1 8", lineCap: "round", lineJoin: "round" })
+        .addTo(grp).bindTooltip(`הדרך הקצרה בכביש (ניווט)${issue.optRatio ? ` · הקו נוסע פי ${issue.optRatio}` : ""}`, { className: "seg-tip", sticky: true });
+    }
     const fit = (shape && shape.length > 1) ? shape : (seg || []).concat(ref || []);
     if (fit.length) map.fitBounds(L.latLngBounds(fit), { padding: [50, 50], maxZoom: 16 });
     else if (issue.lat != null) map.setView([issue.lat, issue.lng], 15);
@@ -1207,6 +1212,7 @@ ${engineFacts}
             <div className="row"><span className="swatch normal"></span>מסלול הקו עם התקלה</div>
             <div className="row"><span className="swatch detour"></span>הקטע המיותר (עיקוף)</div>
             <div className="row"><span className="swatch alt"></span>הדרך הקצרה (קו להשוואה)</div>
+            <div className="row"><span className="swatch opt"></span>הדרך הקצרה בכביש (ניווט)</div>
             <div className="row"><span className="swatch stop"></span>תחנה</div>
           </div>
           <div className="map-toggle">

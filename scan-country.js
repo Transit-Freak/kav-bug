@@ -58,6 +58,26 @@ function distToPath(p, path) {
   return min;
 }
 
+// ניווט אובייקטיבי: הדרך הקצרה-בכביש בין שתי נקודות, דרך OSRM (OpenStreetMap).
+// מחזיר { km, route:[[lat,lng]...] } או null. שרת-ההדגמה הציבורי חינמי אך משותף —
+// לשימוש כבד כדאי לארח OSRM עצמאי. (זהו "חסם-תחתון": מסלול רכב פרטי; אוטובוס עשוי
+// להיות ארוך יותר לגיטימית, לכן משתמשים בזה עם סף נדיב + בדיקת-תחנות.)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function osrmRoute(A, B) {
+  const url = `https://router.project-osrm.org/route/v1/driving/${A[1]},${A[0]};${B[1]},${B[0]}?overview=full&geometries=geojson`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await fetch(url, { headers: { "user-agent": "kavbug" } });
+      if (!r.ok) { await sleep(700 * (attempt + 1)); continue; }
+      const j = await r.json();
+      if (j.code !== "Ok" || !j.routes || !j.routes[0]) return null;
+      const rt = j.routes[0];
+      return { km: rt.distance / 1000, route: (rt.geometry.coordinates || []).map((c) => [c[1], c[0]]) };
+    } catch (e) { await sleep(700 * (attempt + 1)); }
+  }
+  return null;
+}
+
 // =====================  פענוח CSV/ZIP (מותאם מ-gtfs-worker.js)  =============
 function parseCSV(line) {
   if (line.indexOf('"') < 0) return line.split(",");
@@ -148,7 +168,7 @@ function verdictOf(d) {
 function tnow() { return Date.now(); }
 function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
 
-(function main() {
+(async function main() {
   const t0 = tnow();
   console.error("קורא את הקובץ:", zipPath);
   const u8 = new Uint8Array(fs.readFileSync(zipPath));
@@ -389,6 +409,39 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
     }
   }
   issues.sort((a, b) => b.excessKm - a.excessKm);
+
+  // ---- העשרת OSRM: לכל עיקוף, הדרך הקצרה-בכביש בין שתי התחנות + פתרון "ספק" ----
+  console.error("מעשיר עם ניווט אובייקטיבי (OSRM)…");
+  const r5 = (g) => g && g.map((p) => [+(+p[0]).toFixed(5), +(+p[1]).toFixed(5)]);
+  const thinP = (g, m2) => {
+    if (!g || g.length < 3) return g;
+    const out = [g[0]]; let last = g[0];
+    for (let k = 1; k < g.length - 1; k++) { const dy = (g[k][0] - last[0]) * 111, dx = (g[k][1] - last[1]) * 89; if (dy * dy + dx * dx >= m2) { out.push(g[k]); last = g[k]; } }
+    out.push(g[g.length - 1]); return out;
+  };
+  const segKm = (g) => { let s = 0; for (let k = 1; k < g.length; k++) s += havM(g[k - 1], g[k]) / 1000; return s; };
+  let osrmOk = 0;
+  for (const it of issues) {
+    const seg = it.seg;
+    if (!seg || seg.length < 2) continue;
+    const o = await osrmRoute(seg[0], seg[seg.length - 1]);
+    await sleep(300); // אדיבות לשרת הציבורי
+    if (!o || !(o.km > 0)) continue;
+    osrmOk++;
+    it.optKm = +o.km.toFixed(3);
+    it.optRatio = +(segKm(seg) / o.km).toFixed(2);
+    it.optRoute = r5(thinP(o.route, 0.00003));
+    // פתרון "ספק" לפי היחס לאופטימום האובייקטיבי
+    if (it.verdict === "ספק") {
+      if (it.optRatio >= 1.5) { it.verdict = "אמיתי"; it.reason = `הקו נוסע פי ${it.optRatio} מהדרך הקצרה בכביש (ניווט OSRM: ${Math.round(o.km * 1000)} מ') — עיקוף אמיתי לפי אמת אובייקטיבית.`; }
+      else if (it.optRatio <= 1.2) { it.verdict = "לא ניתן להשוואה"; it.reason = `הקו נוסע במסלול קרוב-לאופטימלי (פי ${it.optRatio} מהדרך הקצרה בכביש) — אין עיקוף מיותר בפועל.`; }
+      // 1.2–1.5: גבולי — נשאר "ספק"
+    }
+  }
+  console.error("  OSRM ענה עבור", osrmOk, "מתוך", issues.length, "מקטעים.");
+  // בונים מחדש את הפילוח + הבזבוז אחרי הסיווג-מחדש
+  for (const k of Object.keys(byVerdict)) delete byVerdict[k];
+  for (const it of issues) byVerdict[it.verdict] = (byVerdict[it.verdict] || 0) + 1;
 
   // ---- כתיבה ----
   const real = issues.filter((i) => i.verdict === "אמיתי");
