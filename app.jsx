@@ -464,9 +464,13 @@ function KavBug() {
     if (layerRef.current) layerRef.current.clearLayers(); // לנקות ציור-עיר אם קיים
     // הסטה ימינה (~5 מ') כדי שקטעי הלוך-חזור על אותו כביש יוצגו כשני קווים נפרדים.
     const shape = offsetRight(issue.lineShape, 5), seg = offsetRight(issue.seg, 5), ref = issue.refGeom;
-    // כל מסלול הקו (כחול) — רקע/הקשר, כדי שהמקטע לא "ירחף"
+    // כל מסלול הקו (כחול) — רקע/הקשר, כדי שהמקטע לא "ירחף". מצויר בשתי שכבות
+    // (הילה רחבה + ליבה) כדי שיישאר גלוי גם כשהעיקוף (כתום, עב יותר) חופף אותו
+    // כמעט לגמרי — למשל כשהעיקוף נמצא סמוך לקצה הקו וכל חלון-ההקשר הוא בעצם
+    // הקטע המיותר עצמו (הילה=13 רחבה מהעיקוף=9, כך תמיד נשארת שוליים גלויים).
     if (shape && shape.length > 1) {
-      L.polyline(shape, { color: ROUTE, weight: 5, opacity: 0.5, lineCap: "round", lineJoin: "round" })
+      L.polyline(shape, { color: ROUTE, weight: 13, opacity: 0.3, lineCap: "round", lineJoin: "round" }).addTo(grp);
+      L.polyline(shape, { color: ROUTE, weight: 5, opacity: 0.85, lineCap: "round", lineJoin: "round" })
         .addTo(grp).bindTooltip(`קו ${issue.line}${issue.operator ? " · " + issue.operator : ""}`, { className: "seg-tip", sticky: true });
     }
     // המקטע הבעייתי (כתום) — מצויר *רק על החלק המיותר בפועל* (בליטה/נסיגה/לולאה),
@@ -529,8 +533,11 @@ function KavBug() {
     //    *תמיד* לפי ה-shape האמיתי (GTFS) של הקו הנבדק בלבד, בצבע כחול #2563eb.
     //    אינה תלויה בשום תוצאת-חישוב של AI/עיקוף — נתיב הרישוי מוצג כקו רציף וברור
     //    בכל מקרה. אין ציור של קו-ייחוס/השוואה כלשהו (לא מצוירת שום גרסה ירוקה).
+    // הילה רחבה מתחת לכחול (weight 14 > weight 9 של הכתום) — כדי שהמסלול-המלא
+    // יישאר גלוי גם כשהעיקוף חופף אותו כמעט לגמרי (למשל עיקוף סמוך לקצה-הקו).
     const fullShape = line.shape && line.shape.length > 1 ? line.shape : null;
     if (fullShape) {
+      L.polyline(fullShape, { color: ROUTE, weight: 14, opacity: 0.3, lineCap: "round", lineJoin: "round" }).addTo(grp);
       const pl = L.polyline(fullShape, {
         color: ROUTE, weight: 6, opacity: 1, lineCap: "round", lineJoin: "round",
       }).addTo(grp);
@@ -538,6 +545,7 @@ function KavBug() {
     } else {
       // אין shape — קו ישר בין תחנות (עדיין הקו הנבדק בלבד, כחול)
       const poly = line.stops.map((s) => [s.lat, s.lng]);
+      L.polyline(poly, { color: ROUTE, weight: 14, opacity: 0.3, lineCap: "round", lineJoin: "round" }).addTo(grp);
       const pl = L.polyline(poly, {
         color: ROUTE, weight: 6, opacity: 1, lineCap: "round", lineJoin: "round",
       }).addTo(grp);
