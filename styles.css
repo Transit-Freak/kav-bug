@@ -807,6 +807,21 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
 .country-table td.num { font-family: "Spline Sans Mono", monospace; white-space: nowrap; }
 .country-table td.seg { line-height: 1.4; }
 .country-table td.empty { text-align: center; color: var(--ink-faint); padding: 22px; }
+.country-table td.report-cell { padding: 4px 6px; text-align: center; width: 1%; }
+.report-flag {
+  border: 0; background: none; cursor: pointer; font-size: 15px; line-height: 1;
+  padding: 5px; border-radius: 8px; opacity: .55; transition: opacity .12s, background .12s;
+}
+.report-flag:hover { opacity: 1; background: var(--bg); }
+.report-issue-modal { width: 420px; }
+.report-field { display: flex; flex-direction: column; gap: 5px; margin: 12px 0; font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+.report-field select, .report-field textarea {
+  font-family: "Assistant", sans-serif; font-size: 14px; font-weight: 500; color: var(--ink);
+  border: 1.5px solid var(--line-strong); border-radius: 10px; padding: 8px 10px;
+  background: var(--surface); resize: vertical;
+}
+.report-field select:focus, .report-field textarea:focus { outline: none; border-color: var(--brand); }
+.report-submit { width: 100%; margin-top: 4px; }
 /* הדוח הארצי ישר בפאנל (לא בחלון) */
 .country-panel { padding: 14px 16px; overflow-y: auto; }
 .country-panel .modal-head { margin-bottom: 8px; }
@@ -879,6 +894,10 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
 .progress-fill { height: 100%; background: var(--brand); border-radius: 20px; transition: width .25s ease; }
 .progress-text { display: flex; justify-content: space-between; margin-top: 9px; font-size: 13px; font-weight: 700; color: var(--ink-soft); }
 .modal-hint { font-size: 12px; color: var(--ink-faint); text-align: center; margin: 12px 0 0; font-weight: 500; }
+.trend-line { font-size: 12.5px; color: var(--ink-soft); text-align: center; margin: 6px 0 0; font-weight: 600; }
+.trend-val { font-weight: 700; }
+.trend-val.up { color: var(--high); }   /* עלייה בעיקופים/בזבוז = החמרה */
+.trend-val.down { color: var(--ok); }   /* ירידה = שיפור */
 .modal-credit {
   font-size: 12px; color: var(--ink-faint); text-align: center;
   margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line);

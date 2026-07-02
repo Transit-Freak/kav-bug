@@ -9,10 +9,15 @@ const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "
 // גרסת האפליקציה — *גרסה אחת ליום*: כל השינויים של אותו יום מתועדים תחת אותו
 // מספר, ומצטברים לאותה רשומת-יומן. (חותם-ה-cache KAVBUG_BUILD ב-index.html הוא
 // ערך נפרד שמוגדל בכל פריסה, כדי שקבצים ישנים לא יישארו ב-cache.)
-const KAVBUG_VERSION = "4.3";
+const KAVBUG_VERSION = "4.4";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
+  { version: "4.4", date: "2.7.2026", items: [
+    "עדכון-הנתונים השבועי אוחד לריצה אחת: מוריד את קובץ ה-GTFS הארצי פעם אחת בלבד (עם ניסיונות-חוזרים אם השרת נופל), ומריץ עליו גם את סריקת \"כל הארץ\" וגם את השוואת-הרכבות. אם השוואת-הרכבות נכשלת או לא מחזירה תוצאות (למשל אם שרת חיצוני לא זמין) — הדוח הקודם נשמר במקום להימחק.",
+    "מגמות: כל עדכון שומר את הסיכום היומי (עיקופים אמיתיים, ק\"מ מבוזבזים ביום), וב\"כל הארץ\" מוצגת שורת-מגמה מול הריצה הקודמת (▲/▼).",
+    "כפתור \"🚩 דיווח\" בכל שורת-עיקוף (וגם בתצוגה המורחבת של קו נבחר) — פותח חלון קצר לבחירת סיבה ושליחה, כדי לדווח כשההכרעה נראית לא-נכונה.",
+  ] },
   { version: "4.3", date: "1.7.2026", items: [
     "בדוח הארצי: מקטעים שסומנו \"ספק\" נבדקים עכשיו גם מול ניווט-רכב אובייקטיבי (הדרך הקצרה בכביש בין אותן שתי תחנות) — אם הקו נוסע פי 1.5+ מהאופטימום זה עיקוף אמיתי, ואם הוא כבר קרוב-לאופטימלי אין עיקוף בפועל. פותר את רוב מקרי ה\"ספק\" באופן דטרמיניסטי במקום להשאיר אותם פתוחים.",
     "במפה: כשקיים חישוב-ניווט כזה מוצג קו סגול מקווקו נוסף — \"הדרך הקצרה בכביש\".",
@@ -394,12 +399,97 @@ function WhatsNewModal({ open, onClose }) {
   );
 }
 
+// חלון דיווח על עיקוף ספציפי (🚩) — שונה מ-ReportPanel (שם המשתמש מדווח על
+// *תקלה שלא זוהתה*; כאן המשתמש מדווח על *הכרעה קיימת* — למשל זיהוי-שגוי,
+// תקלה שכבר תוקנה, וכו'). שולח ל-Formspree; בכשל — נופל ל-mailto.
+function IssueReportModal({ issue, onClose }) {
+  const REASONS = [
+    "הזיהוי שגוי — זה לא עיקוף מיותר",
+    "התקלה כבר תוקנה / הקו שונה",
+    "התחנות או המסלול לא מדויקים בנתונים",
+    "יש לי מידע נוסף על הקו הזה",
+    "אחר",
+  ];
+  const [reason, setReason] = React.useState(REASONS[0]);
+  const [message, setMessage] = React.useState("");
+  const [status, setStatus] = React.useState("idle"); // idle | sending | sent | mailfallback
+  if (!issue) return null;
+
+  const mailtoLink = () => {
+    const subject = encodeURIComponent("דיווח על עיקוף — קו " + issue.line);
+    const body = encodeURIComponent(
+      "קו: " + issue.line + "\n" +
+      "מפעיל: " + (issue.operator || "") + "\n" +
+      "מקטע: " + (issue.from || "") + " → " + (issue.to || "") + "\n" +
+      "הכרעה: " + (issue.verdict || "") + "\n" +
+      "סיבת-הדיווח: " + reason + "\n" +
+      "הודעה: " + (message || "(אין)")
+    );
+    return "mailto:shlomihartman@gmail.com?subject=" + subject + "&body=" + body;
+  };
+
+  const submit = async () => {
+    setStatus("sending");
+    try {
+      const r = await fetch("https://formspree.io/f/xlgyoryn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          line: issue.line, operator: issue.operator, from: issue.from, to: issue.to,
+          verdict: issue.verdict, reason, message,
+          pageUrl: (typeof window !== "undefined" && window.location) ? window.location.href : "",
+        }),
+      });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      setStatus("sent");
+    } catch (e) {
+      if (typeof window !== "undefined") window.location.href = mailtoLink();
+      setStatus("mailfallback");
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal report-issue-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>🚩 דיווח על קו {issue.line}</h2>
+          <button className="x" onClick={onClose}>×</button>
+        </div>
+        <p className="modal-note"><b>{issue.from}</b> → <b>{issue.to}</b>{issue.operator ? " · " + issue.operator : ""}</p>
+        {status === "sent" ? (
+          <p className="modal-note">תודה! הדיווח נשלח בהצלחה. ✅</p>
+        ) : status === "mailfallback" ? (
+          <p className="modal-note">לא הצלחנו לשלוח ישירות — נפתח לך אימייל מוכן לשליחה. אם לא נפתח אצלכם, אפשר לשלוח ידנית ל-shlomihartman@gmail.com.</p>
+        ) : (
+          <>
+            <label className="report-field">
+              <span>סיבת הדיווח</span>
+              <select value={reason} onChange={(e) => setReason(e.target.value)}>
+                {REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </label>
+            <label className="report-field">
+              <span>הודעה (רשות)</span>
+              <textarea rows={3} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="פרטים נוספים…" />
+            </label>
+            <button className="btn-primary report-submit" disabled={status === "sending"} onClick={submit}>
+              {status === "sending" ? "שולח…" : "שליחת דיווח"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // חלון "כל הארץ" — טוען דוח ארצי מוכן (country-scan.json) שנסרק מראש ע"י
 // scan-country.js (ומתעדכן אוטומטית ע"י GitHub Action). מאפשר לראות את כל
 // העיקופים בארץ מהטלפון בלי לעבד GTFS — פשוט קורא תוצאה מוכנה.
 function CountryModal({ open, onClose, onPick, initialCity, inline }) {
   const [data, setData] = React.useState(null);
   const [err, setErr] = React.useState(null);
+  const [history, setHistory] = React.useState(null); // מגמות: [{date,totalLines,realCount,totalWasteDayKm,railGapsCount}]
+  const [reportIssue, setReportIssue] = React.useState(null); // עיקוף שנבחר לדיווח (🚩) | null
   const [filter, setFilter] = React.useState("אמיתי");
   const [q, setQ] = React.useState("");
   const [sort, setSort] = React.useState("waste"); // "waste" = מבזבז/יום | "excess" = ק"מ מיותרים
@@ -424,6 +514,14 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
       .then(setData)
       .catch((e) => setErr(e.message || String(e)));
   }, [open, inline, data, err]);
+  // מגמות (history.json) — נכשל בשקט (אין שורת-מגמה אם אין קובץ, לא שגיאה).
+  React.useEffect(() => {
+    if ((!open && !inline) || history) return;
+    fetch("history.json?v=" + (window.KAVBUG_BUILD || ""))
+      .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then((h) => setHistory(Array.isArray(h) ? h : []))
+      .catch(() => setHistory([]));
+  }, [open, inline, history]);
   // עיר התחלתית (מחיפוש-העיר הראשי). null מנקה את הסינון (חזרה לכל הארץ).
   React.useEffect(() => {
     if (!open && !inline) return;
@@ -444,6 +542,13 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
   const cityReal = cityIssues.filter((i) => i.verdict === "אמיתי").length;
   const cityWaste = Math.round(cityIssues.filter((i) => i.verdict === "אמיתי").reduce((s, i) => s + (i.wasteDayKm || 0), 0));
   const vClass = (v) => v === "אמיתי" ? "real" : v === "רעש" ? "noise" : v === "ספק" ? "doubt" : v === "כיסוי לגיטימי" ? "cover" : "incomp";
+  // מגמה ארצית: משווה את הרשומה האחרונה ב-history.json לזו שלפניה. רק בתצוגת
+  // "כל הארץ" (לא כשמסוננים לעיר — history הוא סיכום ארצי בלבד).
+  const trend = (!city && history && history.length >= 2) ? (() => {
+    const last = history[history.length - 1], prev = history[history.length - 2];
+    return { last, prev, dReal: last.realCount - prev.realCount, dWaste: Math.round((last.totalWasteDayKm || 0) - (prev.totalWasteDayKm || 0)) };
+  })() : null;
+  const trendArrow = (d) => d > 0 ? "▲" : d < 0 ? "▼" : "–";
   const content = (
     <>
         <div className="country-city">
@@ -469,6 +574,18 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
               {data.generatedAt ? " · עודכן " + new Date(data.generatedAt).toLocaleDateString("he-IL") : ""}
               {onPick ? " · לחצו על שורה כדי להציג על המפה 🗺️" : ""}
             </p>
+            {trend && (trend.dReal !== 0 || trend.dWaste !== 0) && (
+              <p className="trend-line">
+                מאז הריצה הקודמת ({new Date(trend.prev.date).toLocaleDateString("he-IL")}):{" "}
+                <span className={"trend-val " + (trend.dReal > 0 ? "up" : trend.dReal < 0 ? "down" : "")}>
+                  {trendArrow(trend.dReal)} {Math.abs(trend.dReal)} עיקופים
+                </span>
+                {" · "}
+                <span className={"trend-val " + (trend.dWaste > 0 ? "up" : trend.dWaste < 0 ? "down" : "")}>
+                  {trendArrow(trend.dWaste)} {Math.abs(trend.dWaste).toLocaleString("he-IL")} ק"מ ביום
+                </span>
+              </p>
+            )}
             <div className="country-controls">
               {["אמיתי", "כיסוי לגיטימי", "ספק", "לא ניתן להשוואה", "רעש", "הכל"].map((v) => (
                 <button key={v} className={"chip chip-" + vClass(v) + (filter === v ? " on" : "")} onClick={() => setFilter(v)}>
@@ -482,7 +599,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
             </div>
             <div className="country-table">
               <table>
-                <thead><tr><th>קו</th><th>מפעיל</th><th>מקטע</th><th>מיותר</th><th>מבזבז/יום</th><th>מול</th><th>הכרעה</th></tr></thead>
+                <thead><tr><th>קו</th><th>מפעיל</th><th>מקטע</th><th>מיותר</th><th>מבזבז/יום</th><th>מול</th><th>הכרעה</th><th></th></tr></thead>
                 <tbody>
                   {shown.map((i, k) => {
                     const hasGeo = (i.seg && i.seg.length > 1) || (i.refGeom && i.refGeom.length > 1);
@@ -497,12 +614,16 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
                         <td className="num waste" title={i.tripsDay ? i.tripsDay + " נסיעות ביום עמוס" : ""}>{i.wasteDayKm != null ? i.wasteDayKm + " ק\"מ" : "—"}</td>
                         <td className="num">{i.ref}</td>
                         <td><span className={"vd vd-" + vClass(i.verdict)}>{i.verdict}</span></td>
+                        <td className="report-cell">
+                          <button className="report-flag" title="דיווח על הקו הזה" onClick={(e) => { e.stopPropagation(); setReportIssue(i); }}>🚩</button>
+                        </td>
                       </tr>
                     );
                   })}
-                  {shown.length === 0 && <tr><td className="empty" colSpan={7}>אין תוצאות</td></tr>}
+                  {shown.length === 0 && <tr><td className="empty" colSpan={8}>אין תוצאות</td></tr>}
                 </tbody>
               </table>
+              {reportIssue && <IssueReportModal issue={reportIssue} onClose={() => setReportIssue(null)} />}
             </div>
           </>
         )}
@@ -1757,4 +1878,4 @@ function Panel({ city, activeIdx, setActiveIdx, aiReview }) {
   );
 }
 
-Object.assign(window, { TopBar, Panel, ReportPanel, Stats, ProblemCard, UploadModal, InfoModal, CountryModal, CITY_PRESETS, fmt, SEV_LABEL, KAVBUG_VERSION, runAIVerdict, buildVerdictPrompt, dirLabel, aiComplete, aiAvailable, fallbackVerdict, stripArabic });
+Object.assign(window, { TopBar, Panel, ReportPanel, Stats, ProblemCard, UploadModal, InfoModal, CountryModal, IssueReportModal, CITY_PRESETS, fmt, SEV_LABEL, KAVBUG_VERSION, runAIVerdict, buildVerdictPrompt, dirLabel, aiComplete, aiAvailable, fallbackVerdict, stripArabic });

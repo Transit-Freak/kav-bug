@@ -48,10 +48,16 @@ global.ReactDOM = window.ReactDOM = ReactDOM;
 // ---------- 3) fetch מזויף ----------
 const report = JSON.parse(fs.readFileSync(path.join(ROOT, "country-scan.json"), "utf8"));
 const fetchLog = [];
-const fakeFetch = async (url) => {
+const fakeFetch = async (url, opts) => {
   fetchLog.push(String(url));
   if (String(url).includes("country-scan.json"))
     return { ok: true, status: 200, json: async () => report };
+  if (String(url).includes("history.json"))
+    return { ok: true, status: 200, json: async () => [] }; // ריק — הבדיקה לא בודקת מגמות
+  if (String(url).includes("formspree.io")) {
+    if (window.__formspreeShouldFail) return { ok: false, status: 500, json: async () => ({}) };
+    return { ok: true, status: 200, json: async () => ({ ok: true }) };
+  }
   // geocode (nominatim) — מחזיר bbox מזויף
   return { ok: true, status: 200, json: async () => ([{ boundingbox: ["32.00", "32.10", "34.80", "34.90"], lat: "32.05", lon: "34.85", display_name: "עיר-בדיקה" }]) };
 };
@@ -63,8 +69,9 @@ global.fetch = window.fetch = fakeFetch;
 const REACT_PRESET = ["@babel/preset-react", { runtime: "classic" }];
 const src = babel.transformFileSync(path.join(ROOT, "components.jsx"), { presets: [REACT_PRESET] }).code;
 try { (0, eval)(src); } catch (e) { console.error("✗ components.jsx לא נטען:", e.message); process.exit(1); }
-const { CountryModal, TopBar } = window;
+const { CountryModal, TopBar, IssueReportModal } = window;
 if (!CountryModal || !TopBar) { console.error("✗ CountryModal/TopBar לא נחשפו על window"); process.exit(1); }
+if (!IssueReportModal) { console.error("✗ IssueReportModal לא נחשף על window"); process.exit(1); }
 
 // CountryIssuePanel חי ב-app.jsx (שלא ניתן לטעון כולו — הוא מבצע mount עם Leaflet).
 // חולצים *רק* את הפונקציה (פרזנטציה טהורה, משתמשת ב-fmt הגלובלי) ומריצים אותה.
@@ -166,6 +173,56 @@ async function mount(element) {
     else if (/בחרו עיר|העלו קובץ/.test(text)) bad("CountryIssuePanel הציג בטעות מסך 'בחרו עיר'");
     else ok("CountryIssuePanel מציג פרטי-עיקוף (קו 6, הכרעה) — לא מסך 'בחרו עיר'");
   } else bad("CountryIssuePanel לא חולץ מ-app.jsx");
+
+  // (ו) IssueReportModal — שליחה מוצלחת ל-Formspree מציגה אישור
+  {
+    window.__formspreeShouldFail = false;
+    const issue = { line: "6", operator: "דן בדרום", from: "תחנה א", to: "תחנה ב", verdict: "אמיתי" };
+    const { host, thrown } = await mount(React.createElement(IssueReportModal, { issue, onClose: () => {} }));
+    if (thrown) bad("IssueReportModal זרק: " + thrown.message);
+    else {
+      const btn = host.querySelector(".report-submit");
+      if (!btn) bad("IssueReportModal — כפתור 'שליחת דיווח' לא נמצא");
+      else {
+        await act(async () => { btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true })); await flush(); await flush(); });
+        if (!/נשלח בהצלחה/.test(host.textContent)) bad("IssueReportModal — הצלחה לא הציגה אישור-שליחה");
+        else ok("IssueReportModal — שליחה מוצלחת ל-Formspree מציגה אישור");
+      }
+    }
+  }
+
+  // (ז) IssueReportModal — כשל ב-Formspree נופל ל-mailto בלי לקרוס, ומודיע למשתמש
+  {
+    window.__formspreeShouldFail = true;
+    const issue = { line: "6", operator: "דן בדרום", from: "תחנה א", to: "תחנה ב", verdict: "אמיתי" };
+    const { host, thrown } = await mount(React.createElement(IssueReportModal, { issue, onClose: () => {} }));
+    if (thrown) bad("IssueReportModal (כשל) זרק: " + thrown.message);
+    else {
+      const btn = host.querySelector(".report-submit");
+      await act(async () => { btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true })); await flush(); await flush(); });
+      if (!/shlomihartman@gmail\.com/.test(host.textContent)) bad("IssueReportModal — כשל-Formspree לא הודיע על נפילה ל-mailto");
+      else ok("IssueReportModal — כשל-Formspree נופל ל-mailto בלי לקרוס");
+    }
+    window.__formspreeShouldFail = false;
+  }
+
+  // (ח) CountryModal(inline) — כפתור 🚩 בשורת-הטבלה פותח את IssueReportModal,
+  //     *בלי* להפעיל גם את onPick (לחיצה על השורה עצמה = ניווט במפה).
+  {
+    let picked = null;
+    const { host, thrown } = await mount(React.createElement(CountryModal, { inline: true, onPick: (i) => { picked = i; } }));
+    if (thrown) bad("CountryModal(inline) עם דיווח זרק: " + thrown.message);
+    else {
+      const flagBtn = host.querySelector(".report-flag");
+      if (!flagBtn) bad("CountryModal(inline) — כפתור 🚩 לא נמצא בטבלה (ייתכן ואין שורות בסינון ברירת-המחדל)");
+      else {
+        await act(async () => { flagBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true })); await flush(); });
+        if (!host.querySelector(".report-issue-modal")) bad("לחיצה על 🚩 לא פתחה את IssueReportModal");
+        else if (picked !== null) bad("לחיצה על 🚩 הפעילה גם את onPick (דליפה ללחיצת-שורה) — צריך stopPropagation");
+        else ok("כפתור 🚩 בטבלה פותח דיווח בלי להפעיל ניווט-מפה (stopPropagation תקין)");
+      }
+    }
+  }
 
   // ---------- סיכום ----------
   console.log("\nfetch שנקראו:", fetchLog.filter((u) => u.includes("country-scan")).length, "× country-scan.json");

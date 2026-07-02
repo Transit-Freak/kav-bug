@@ -241,6 +241,7 @@ function divergentRuns(polyA, polyB, tol) {
 // "בחרו עיר" (שמדבר על סריקה/העלאת-קובץ ובלבל). fmt/הצבעים מגיעים כגלובלים
 // מ-components.jsx (שנטען לפני app.jsx).
 function CountryIssuePanel({ issue, onBack, onClose }) {
+  const [reportOpen, setReportOpen] = React.useState(false);
   const vc = issue.verdict === "אמיתי" ? "real" : issue.verdict === "רעש" ? "noise"
     : issue.verdict === "ספק" ? "doubt" : issue.verdict === "כיסוי לגיטימי" ? "cover" : "incomp";
   return (
@@ -248,6 +249,7 @@ function CountryIssuePanel({ issue, onBack, onClose }) {
       <div className="ci-panel">
         <div className="ci-top">
           <button className="ci-back" onClick={onBack} title="חזרה לרשימת כל הארץ">← כל הארץ</button>
+          <button className="report-flag" title="דיווח על הקו הזה" onClick={() => setReportOpen(true)}>🚩</button>
           <button className="ci-x" onClick={onClose} title="סגירה">✕</button>
         </div>
         <div className="ci-head">
@@ -268,6 +270,7 @@ function CountryIssuePanel({ issue, onBack, onClose }) {
         {issue.reason ? <p className="ci-reason">{issue.reason}</p> : null}
         <p className="ci-hint">המקטע מסומן על המפה: <b style={{ color: "#ef8a17" }}>כתום</b> = החלק המיותר · <b style={{ color: "#1f9d57" }}>ירוק</b> = מסלול-ההשוואה · <b style={{ color: "#2563eb" }}>כחול</b> = מסלול הקו.</p>
       </div>
+      {reportOpen && <IssueReportModal issue={issue} onClose={() => setReportOpen(false)} />}
     </aside>
   );
 }
