@@ -4,15 +4,29 @@ function fmt(n, d = 1) {
   return Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
+// מועד ה-Action השבועי הבא (yaml: cron "0 3 * * 0" = יום ראשון 03:00 UTC).
+// מחושב ב-UTC כדי להתאים בדיוק ל-cron, ומוצג בזמן-המקומי של המבקר (toLocaleString
+// ממיר לבד) — כדי שלא יתבלבלו למה הדוח "לא התעדכן" כשעוד לא הגיע הזמן.
+function nextWeeklyRun(from) {
+  const d = from ? new Date(from) : new Date();
+  const daysUntilSunday = (7 - d.getUTCDay()) % 7;
+  const todayAtRunTime = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 3, 0, 0);
+  const addDays = (daysUntilSunday === 0 && d.getTime() >= todayAtRunTime) ? 7 : daysUntilSunday;
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + addDays, 3, 0, 0));
+}
+
 const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "תקין" };
 
 // גרסת האפליקציה — *גרסה אחת ליום*: כל השינויים של אותו יום מתועדים תחת אותו
 // מספר, ומצטברים לאותה רשומת-יומן. (חותם-ה-cache KAVBUG_BUILD ב-index.html הוא
 // ערך נפרד שמוגדל בכל פריסה, כדי שקבצים ישנים לא יישארו ב-cache.)
-const KAVBUG_VERSION = "4.4";
+const KAVBUG_VERSION = "4.5";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
+  { version: "4.5", date: "4.7.2026", items: [
+    "בתצוגת \"כל הארץ\" מוצג עכשיו מתי מתוכנן העדכון האוטומטי הבא — כדי שיהיה ברור שהדוח מתעדכן פעם בשבוע (לא בכל רגע), ולא ייראה כאילו הוא \"תקוע\".",
+  ] },
   { version: "4.4", date: "2.7.2026", items: [
     "עדכון-הנתונים השבועי אוחד לריצה אחת: מוריד את קובץ ה-GTFS הארצי פעם אחת בלבד (עם ניסיונות-חוזרים אם השרת נופל), ומריץ עליו גם את סריקת \"כל הארץ\" וגם את השוואת-הרכבות. אם השוואת-הרכבות נכשלת או לא מחזירה תוצאות (למשל אם שרת חיצוני לא זמין) — הדוח הקודם נשמר במקום להימחק.",
     "מגמות: כל עדכון שומר את הסיכום היומי (עיקופים אמיתיים, ק\"מ מבוזבזים ביום), וב\"כל הארץ\" מוצגת שורת-מגמה מול הריצה הקודמת (▲/▼).",
@@ -573,6 +587,9 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
                 : <>{Number(data.totalLines).toLocaleString("he-IL")} קווים נסרקו · <b>{data.realCount}</b> עיקופים אמיתיים{data.totalWasteDayKm != null ? <> · <b>{Number(data.totalWasteDayKm).toLocaleString("he-IL")} ק"מ מבוזבזים ביום עמוס</b></> : null}</>}
               {data.generatedAt ? " · עודכן " + new Date(data.generatedAt).toLocaleDateString("he-IL") : ""}
               {onPick ? " · לחצו על שורה כדי להציג על המפה 🗺️" : ""}
+            </p>
+            <p className="modal-hint next-run">
+              🕐 העדכון האוטומטי הבא: {nextWeeklyRun().toLocaleString("he-IL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
             </p>
             {trend && (trend.dReal !== 0 || trend.dWaste !== 0) && (
               <p className="trend-line">
