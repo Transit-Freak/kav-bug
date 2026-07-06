@@ -243,7 +243,8 @@ function divergentRuns(polyA, polyB, tol) {
 function CountryIssuePanel({ issue, onBack, onClose }) {
   const [reportOpen, setReportOpen] = React.useState(false);
   const vc = issue.verdict === "אמיתי" ? "real" : issue.verdict === "רעש" ? "noise"
-    : issue.verdict === "ספק" ? "doubt" : issue.verdict === "כיסוי לגיטימי" ? "cover" : "incomp";
+    : issue.verdict === "ספק" ? "doubt" : issue.verdict === "כיסוי לגיטימי" ? "cover"
+    : issue.verdict === "חשד עיקוף (רק לפי רכב)" ? "carsuspect" : "incomp";
   return (
     <aside className="panel">
       <div className="ci-panel">

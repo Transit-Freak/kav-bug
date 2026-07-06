@@ -833,6 +833,7 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
 .vd-doubt { background: var(--med-bg); color: var(--med); }
 .vd-incomp { background: var(--bg); color: var(--ink-faint); }
 .vd-cover { background: var(--brand-soft); color: var(--brand-ink); }
+.vd-carsuspect { background: var(--low-bg); color: oklch(0.52 0.10 90); }
 .osrm-flag {
   display: inline-block; margin-inline-start: 5px; font-size: 11px; font-weight: 700;
   color: var(--med); background: var(--med-bg); border-radius: 999px; padding: 1px 7px;

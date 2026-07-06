@@ -560,7 +560,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
   const count = (v) => v === "הכל" ? cityIssues.length : cityIssues.filter((i) => i.verdict === v).length;
   const cityReal = cityIssues.filter((i) => i.verdict === "אמיתי").length;
   const cityWaste = Math.round(cityIssues.filter((i) => i.verdict === "אמיתי").reduce((s, i) => s + (i.wasteDayKm || 0), 0));
-  const vClass = (v) => v === "אמיתי" ? "real" : v === "רעש" ? "noise" : v === "ספק" ? "doubt" : v === "כיסוי לגיטימי" ? "cover" : "incomp";
+  const vClass = (v) => v === "אמיתי" ? "real" : v === "רעש" ? "noise" : v === "ספק" ? "doubt" : v === "כיסוי לגיטימי" ? "cover" : v === "חשד עיקוף (רק לפי רכב)" ? "carsuspect" : "incomp";
   // מגמה ארצית: משווה את הרשומה האחרונה ב-history.json לזו שלפניה. רק בתצוגת
   // "כל הארץ" (לא כשמסוננים לעיר — history הוא סיכום ארצי בלבד).
   const trend = (!city && history && history.length >= 2) ? (() => {
@@ -609,7 +609,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
               </p>
             )}
             <div className="country-controls">
-              {["אמיתי", "כיסוי לגיטימי", "ספק", "לא ניתן להשוואה", "רעש", "הכל"].map((v) => (
+              {["אמיתי", "כיסוי לגיטימי", "ספק", "לא ניתן להשוואה", "רעש", "חשד עיקוף (רק לפי רכב)", "הכל"].map((v) => (
                 <button key={v} className={"chip chip-" + vClass(v) + (filter === v ? " on" : "")} onClick={() => setFilter(v)}>
                   {v} <span className="chip-n">{count(v)}</span>
                 </button>
