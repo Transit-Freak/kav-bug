@@ -534,10 +534,16 @@
         // מסירים כל מועמד שקיבל בכל זאת הוכחת-קו רגילה (found), כי אז אין צורך
         // בבדיקת-הרכב החלשה יותר. עוברת גם היא את שערי-הארטיפקט שמעליה (זהה
         // מבחינת-אמינות-הגאומטריה לגלאי הרגיל).
+        // שער behind: מקטעים שחוזרים-לאחור מעבר לתחנת-המוצא (גישה לתחנת-קצה
+        // בדרך-ללא-מוצא, כמו בית-חולים/מתחם) מסוננים החוצה כאן, *לפני* שהם
+        // מגיעים בכלל ל-OSRM — נבדק אמפירית על הדוח הארצי: 309 מתוך 445
+        // המקטעים שאושרו (כ-69%!) הראו את הדפוס הזה, ורובם ככל הנראה גישה
+        // לגיטימית ולא עיקוף-צד אמיתי — יחס-כשל גבוה מדי לקטגוריה שימושית.
         {
           const straightKm = haversine(X, Y);
-          if (straightKm > 0 && roadA / straightKm >= CAR_ONLY_RATIO && (roadA - straightKm) >= CAR_ONLY_MIN_KM) {
-            carCands.push({ i, roadA, straightKm, ratio: roadA / straightKm, behind: !!(fwd && fwd.behind) });
+          const isBehind = !!(fwd && fwd.behind);
+          if (!isBehind && straightKm > 0 && roadA / straightKm >= CAR_ONLY_RATIO && (roadA - straightKm) >= CAR_ONLY_MIN_KM) {
+            carCands.push({ i, roadA, straightKm, ratio: roadA / straightKm });
           }
         }
         // (2) קו-ייחוס: מבין הקווים שעוצרים ב-X, מי שגם עוצר ב-Y מקומית.
