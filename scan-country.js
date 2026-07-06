@@ -421,15 +421,23 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
   }
   issues.sort((a, b) => b.excessKm - a.excessKm);
 
-  // ---- העשרת OSRM: רק למקטעי "ספק" (מעטים מאוד — לרוב 0-2 בכל הארץ) ----
-  // בכוונה *לא* לכל 250+ המקטעים: שרת-ההדגמה הציבורי של OSRM הוא משותף וחינמי,
-  // ומדיניות-השימוש שלו מבקשת קצב-בקשות נמוך מאוד לעיבוד-אצווה. ניסיון קודם על
-  // כל המקטעים (קצב 300ms) הפעיל הגבלת-קצב זמנית מולנו ונכשל לגמרי (0/280).
-  // מכיוון שהמטרה בפועל היא לפתור "ספק" בלבד — ויש בדרך-כלל מקרה אחד-שניים —
-  // מספיק להעשיר רק אותם, בקצב איטי ומכובד.
-  console.error("מעשיר עם ניווט אובייקטיבי (OSRM) — רק מקטעי \"ספק\"…");
-  const doubtIssues = issues.filter((it) => it.verdict === "ספק");
-  console.error("  מקטעי \"ספק\" שיועשרו:", doubtIssues.length);
+  // ---- העשרת OSRM: על *כל* המקטעים עם גאומטריה (לא רק "ספק") ----
+  // הרצה קודמת על כל 280 המקטעים בקצב מהיר (300ms) הפעילה הגבלת-קצב זמנית
+  // בשרת-ההדגמה הציבורי ונכשלה לגמרי (0/280). עכשיו רצים על כולם, אבל בקצב
+  // *איטי ומכובד בהרבה* (2 שנ' בין בקשות) כדי לא לחזור על אותה תקלה — ריצה
+  // מלאה לוקחת ~10-15 דקות, לא קורסת, פשוט לוקחת זמן.
+  //
+  // חשוב: לשאר-הכרעות (לא "ספק") *לא* משנים את הפסק על סמך OSRM בלבד — רק
+  // מוסיפים אנוטציה (optKm/optRatio/optRoute) למידע/לציור. הסיבה: OSRM הוא
+  // ניווט-רכב-פרטי, ואוטובוס עשוי לנסוע ארוך יותר *לגיטימית* (נתיבי-תח"צ,
+  // איסורי-פנייה, מסופים) — זה חסם-תחתון/אינדיקציה, לא פסק-דין. במקום זאת
+  // מסמנים osrmFlag על "אמיתי" שה-OSRM חושב שהוא כבר קרוב-לאופטימלי (ratio
+  // נמוך), כדי שאפשר יהיה לראות את אלה בנפרד ולבדוק אנושית — בלי לדרוס הכרעה
+  // שכבר אומתה ידנית על קווים רבים בעבר. ל"ספק" (מעטים, לרוב 0-2) ממשיכים
+  // לפתור אוטומטית כמו קודם — שם אין הכרעה קיימת לדרוס.
+  console.error("מעשיר עם ניווט אובייקטיבי (OSRM) — כל המקטעים…");
+  const osrmIssues = issues.filter((it) => it.seg && it.seg.length > 1);
+  console.error("  מקטעים שיועשרו:", osrmIssues.length, "(מתוך", issues.length, ")");
   const r5 = (g) => g && g.map((p) => [+(+p[0]).toFixed(5), +(+p[1]).toFixed(5)]);
   const thinP = (g, m2) => {
     if (!g || g.length < 3) return g;
@@ -439,22 +447,30 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
   };
   const segKm = (g) => { let s = 0; for (let k = 1; k < g.length; k++) s += havM(g[k - 1], g[k]) / 1000; return s; };
   let osrmOk = 0;
-  for (const it of doubtIssues) {
+  for (let idx = 0; idx < osrmIssues.length; idx++) {
+    const it = osrmIssues[idx];
     const seg = it.seg;
-    if (!seg || seg.length < 2) continue;
     const o = await osrmRoute(seg[0], seg[seg.length - 1]);
-    await sleep(1200); // קצב מכובד לשרת-ההדגמה הציבורי (מקרים בודדים בלבד)
+    await sleep(2000); // קצב מכובד ובטוח לשרת-ההדגמה הציבורי — כל המקטעים, לא רק "ספק"
+    if ((idx + 1) % 20 === 0 || idx === osrmIssues.length - 1) console.error("  OSRM התקדמות:", idx + 1, "/", osrmIssues.length, "| הצליחו:", osrmOk);
     if (!o || !(o.km > 0)) continue;
     osrmOk++;
     it.optKm = +o.km.toFixed(3);
     it.optRatio = +(segKm(seg) / o.km).toFixed(2);
     it.optRoute = r5(thinP(o.route, 0.00003));
-    // פתרון "ספק" לפי היחס לאופטימום האובייקטיבי
-    if (it.optRatio >= 1.5) { it.verdict = "אמיתי"; it.reason = `הקו נוסע פי ${it.optRatio} מהדרך הקצרה בכביש (ניווט OSRM: ${Math.round(o.km * 1000)} מ') — עיקוף אמיתי לפי אמת אובייקטיבית.`; }
-    else if (it.optRatio <= 1.2) { it.verdict = "לא ניתן להשוואה"; it.reason = `הקו נוסע במסלול קרוב-לאופטימלי (פי ${it.optRatio} מהדרך הקצרה בכביש) — אין עיקוף מיותר בפועל.`; }
-    // 1.2–1.5: גבולי — נשאר "ספק"
+    if (it.verdict === "ספק") {
+      // פתרון "ספק" לפי היחס לאופטימום האובייקטיבי — אין הכרעה קיימת לדרוס
+      if (it.optRatio >= 1.5) { it.verdict = "אמיתי"; it.reason = `הקו נוסע פי ${it.optRatio} מהדרך הקצרה בכביש (ניווט OSRM: ${Math.round(o.km * 1000)} מ') — עיקוף אמיתי לפי אמת אובייקטיבית.`; }
+      else if (it.optRatio <= 1.2) { it.verdict = "לא ניתן להשוואה"; it.reason = `הקו נוסע במסלול קרוב-לאופטימלי (פי ${it.optRatio} מהדרך הקצרה בכביש) — אין עיקוף מיותר בפועל.`; }
+      // 1.2–1.5: גבולי — נשאר "ספק"
+    } else if (it.verdict === "אמיתי" && it.optRatio <= 1.2) {
+      // דגל (לא שינוי-הכרעה): OSRM חושב שהמסלול כבר קרוב-לאופטימלי, למרות
+      // שההכרעה הראשית קבעה "אמיתי". ייתכן שזה תקין (נתיב-תח"צ/חד-סטרי/מסוף
+      // שאוטובוס פטור מהם) — מסומן ל"בדיקה אנושית", לא נדרס אוטומטית.
+      it.osrmFlag = "worth-review";
+    }
   }
-  console.error("  OSRM ענה עבור", osrmOk, "מתוך", doubtIssues.length, "מקטעי \"ספק\".");
+  console.error("  OSRM ענה עבור", osrmOk, "מתוך", osrmIssues.length, "מקטעים.");
   // בונים מחדש את הפילוח + הבזבוז אחרי הסיווג-מחדש
   for (const k of Object.keys(byVerdict)) delete byVerdict[k];
   for (const it of issues) byVerdict[it.verdict] = (byVerdict[it.verdict] || 0) + 1;
