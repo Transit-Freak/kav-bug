@@ -514,10 +514,19 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       const X = L.stops[c.i], Y = L.stops[c.i + 1];
       let seg = thinv(sliceDenseV(L, c.i, c.i + 1), 0.00003);
       if (!(seg && seg.length > 1)) continue;
+      // קו-הרקע (כחול): *חלון צפוף* סביב המקטע (3 תחנות לפני/אחרי) — בדיוק כמו
+      // במקטעים הרגילים — כדי שהקו הכחול (הקשר-המסלול) יופיע גם כאן. בלעדיו
+      // המפה מציגה רק כתום+סגול, בלי שום הקשר לאיפה הקו נוסע בפועל.
+      let lineShape = null;
+      if (L.stops) {
+        const a = Math.max(0, c.i - 3), b = Math.min(L.stops.length - 1, c.i + 4);
+        lineShape = thinv(sliceDenseV(L, a, b), 0.00003);
+      }
+      if (!(lineShape && lineShape.length > 1)) lineShape = thinv(L.shape, 0.0013);
       carRaw.push({
         line: L.number, operator: L.operator, from: X.name, to: Y.name,
         lat: X.lat, lng: X.lng, roadA: c.roadA, tripsDay: L._tripsDay || 0,
-        seg: round5v(seg),
+        seg: round5v(seg), lineShape: round5v(lineShape),
       });
     }
   }
@@ -562,7 +571,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
         tripsDay: m.tripsDay, wasteDayKm: +((m.roadA - o.km) * m.tripsDay).toFixed(1),
         ratio: null, verdict: "חשד עיקוף (רק לפי רכב)",
         reason: `אין קו-אוטובוס אחר שמוכיח דרך קצרה יותר, אבל המקטע (${m.roadA.toFixed(2)} ק"מ) ארוך פי ${optRatio} מהדרך הקצרה בכביש לפי ניווט-רכב אובייקטיבי (${o.km.toFixed(2)} ק"מ) — כדאי לבדוק ידנית אם זהו עיקוף מיותר או צורך-גישה לגיטימי (כמו כניסה למתחם).`,
-        seg: m.seg, refGeom: null, lineShape: null,
+        seg: m.seg, refGeom: null, lineShape: m.lineShape,
         lat: m.lat, lng: m.lng,
         optKm: +o.km.toFixed(3), optRatio, optRoute,
       });
