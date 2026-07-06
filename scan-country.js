@@ -545,12 +545,16 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
     if ((idx + 1) % 50 === 0 || idx === groupArr.length - 1) console.error("    התקדמות:", idx + 1, "/", groupArr.length, "| הצליחו:", carOk, "| אושרו:", carConfirmed);
     if (!o || !(o.km > 0)) continue;
     carOk++;
-    const rep = g.members[0];
-    const optRatio = +(rep.roadA / o.km).toFixed(2);
-    if (optRatio < 1.5) continue; // לא מספיק שונה מהאופטימום-לרכב — לא מאשרים כחשד
-    carConfirmed++;
+    // חשוב: קווים ששולחים לאותה קבוצה (אותן קואורדינטות-קצה מעוגלות) לא בהכרח
+    // עוברים באותו מסלול *בין* הקצוות — לכן מחשבים יחס בנפרד לכל קו-חבר (לפי
+    // ה-roadA *שלו*, מול אותו o.km משותף), ולא לפי חבר-אחד מייצג לכל הקבוצה.
+    // אחרת קו עם roadA קצר-במיוחד "נגרר" לאישור בזכות קו אחר בקבוצה שכן חורג.
     const optRoute = round5v(thinv(o.route, 0.00003));
+    let groupConfirmed = false;
     for (const m of g.members) {
+      const optRatio = +(m.roadA / o.km).toFixed(2);
+      if (optRatio < 1.5) continue; // לא מספיק שונה מהאופטימום-לרכב — לא מאשרים כחשד
+      groupConfirmed = true;
       issues.push({
         line: m.line, operator: m.operator, type: "detour",
         from: m.from, to: m.to, ref: null,
@@ -563,6 +567,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
         optKm: +o.km.toFixed(3), optRatio, optRoute,
       });
     }
+    if (groupConfirmed) carConfirmed++;
   }
   console.error("  OSRM ענה עבור", carOk, "מתוך", groupArr.length, "מקטעים ייחודיים | אושרו כ'חשד':", carConfirmed,
     "(", issues.filter((i) => i.verdict === "חשד עיקוף (רק לפי רכב)").length, "רשומות-קו בסך-הכול)");
