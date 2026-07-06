@@ -524,6 +524,11 @@
           const projGapKm = (P, st) => (P && P.proj) ? haversine({ lat: P.proj[0], lng: P.proj[1] }, st) : 0;
           if (projGapKm(A, X) > SNAP_PROJ_GAP_KM || projGapKm(B, Y) > SNAP_PROJ_GAP_KM) continue;
         }
+        // מדידת התקדמות-קדימה נטו וזיהוי נסיגה-מאחורי-המוצא (turnaround). משמש
+        // בהמשך — אחרי בחירת קו-הייחוס — כדי לסנן לולאת-היפוך בתחנת-קצה. וגם כאן,
+        // למועמד "רק לפי רכב" למטה — behind=true כשהמקטע חוזר לאחור מעבר לתחנת-
+        // המוצא שלו (גישה לתחנת-קצה בדרך-ללא-מוצא/מתחם, לא עיקוף רגיל).
+        const fwd = forwardKm(L, i, i + 1);
         // מועמד "רק לפי רכב": נאסף כאן, *לפני* חיפוש קו-הייחוס ובלי תלות בתוצאתו
         // (גם אם בסוף כן יימצא קו-ייחוס תקף לזוג הזה — או שלא). בסוף הלולאה
         // מסירים כל מועמד שקיבל בכל זאת הוכחת-קו רגילה (found), כי אז אין צורך
@@ -532,12 +537,9 @@
         {
           const straightKm = haversine(X, Y);
           if (straightKm > 0 && roadA / straightKm >= CAR_ONLY_RATIO && (roadA - straightKm) >= CAR_ONLY_MIN_KM) {
-            carCands.push({ i, roadA, straightKm, ratio: roadA / straightKm });
+            carCands.push({ i, roadA, straightKm, ratio: roadA / straightKm, behind: !!(fwd && fwd.behind) });
           }
         }
-        // מדידת התקדמות-קדימה נטו וזיהוי נסיגה-מאחורי-המוצא (turnaround). משמש
-        // בהמשך — אחרי בחירת קו-הייחוס — כדי לסנן לולאת-היפוך בתחנת-קצה.
-        const fwd = forwardKm(L, i, i + 1);
         // (2) קו-ייחוס: מבין הקווים שעוצרים ב-X, מי שגם עוצר ב-Y מקומית.
         //     אמת-המידה = הקצר שבכולם (ההוכחה החזקה ביותר שהכביש ישר).
         const cands = servedBy.get(X.id);

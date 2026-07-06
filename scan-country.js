@@ -526,7 +526,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       carRaw.push({
         line: L.number, operator: L.operator, from: X.name, to: Y.name,
         lat: X.lat, lng: X.lng, roadA: c.roadA, tripsDay: L._tripsDay || 0,
-        seg: round5v(seg), lineShape: round5v(lineShape),
+        seg: round5v(seg), lineShape: round5v(lineShape), behind: c.behind,
       });
     }
   }
@@ -564,13 +564,20 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       const optRatio = +(m.roadA / o.km).toFixed(2);
       if (optRatio < 1.5) continue; // לא מספיק שונה מהאופטימום-לרכב — לא מאשרים כחשד
       groupConfirmed = true;
+      // אם המקטע חוזר-לאחור מעבר לתחנת-המוצא שלו (behind, מ-forwardKm) — זה נראה
+      // כמו גישה לתחנת-קצה בדרך-ללא-מוצא/מתחם (הלוך ואז חזרה כמעט לאותה נקודה,
+      // וממשיך משם בכיוון אחר) ולא עיקוף-צד רגיל. מציינים זאת במפורש בהסבר —
+      // ראייה שונה מ"כניסה למתחם" הכללית, ספציפית וניתנת-לאימות על המפה.
+      const explain = m.behind
+        ? `אין קו-אוטובוס אחר שמוכיח דרך קצרה יותר, והמקטע (${m.roadA.toFixed(2)} ק"מ) ארוך פי ${optRatio} מהדרך הקצרה בכביש (${o.km.toFixed(2)} ק"מ) — אבל שימו לב: צורת המקטע חוזרת כמעט לאותה נקודה שממנה יצא לפני שממשיך הלאה, מה שנראה כמו גישה לתחנה בדרך-ללא-מוצא (למשל בית-חולים/מתחם) ולא עיקוף-צד. יש לבדוק על המפה אם זה אכן המצב.`
+        : `אין קו-אוטובוס אחר שמוכיח דרך קצרה יותר, אבל המקטע (${m.roadA.toFixed(2)} ק"מ) ארוך פי ${optRatio} מהדרך הקצרה בכביש לפי ניווט-רכב אובייקטיבי (${o.km.toFixed(2)} ק"מ) — כדאי לבדוק ידנית אם זהו עיקוף מיותר, או הסבר לגיטימי (כניסה למתחם, או מסדרון-תח"צ ייעודי כמו נתיב-BRT/מטרונית שרכב פרטי לא יכול לנסוע בו, ולכן ה-OSRM לא ראה אותו).`;
       issues.push({
         line: m.line, operator: m.operator, type: "detour",
         from: m.from, to: m.to, ref: null,
         excessKm: +(m.roadA - o.km).toFixed(3),
         tripsDay: m.tripsDay, wasteDayKm: +((m.roadA - o.km) * m.tripsDay).toFixed(1),
         ratio: null, verdict: "חשד עיקוף (רק לפי רכב)",
-        reason: `אין קו-אוטובוס אחר שמוכיח דרך קצרה יותר, אבל המקטע (${m.roadA.toFixed(2)} ק"מ) ארוך פי ${optRatio} מהדרך הקצרה בכביש לפי ניווט-רכב אובייקטיבי (${o.km.toFixed(2)} ק"מ) — כדאי לבדוק ידנית אם זהו עיקוף מיותר, או הסבר לגיטימי (כניסה למתחם, או מסדרון-תח"צ ייעודי כמו נתיב-BRT/מטרונית שרכב פרטי לא יכול לנסוע בו, ולכן ה-OSRM לא ראה אותו).`,
+        reason: explain,
         seg: m.seg, refGeom: null, lineShape: m.lineShape,
         lat: m.lat, lng: m.lng,
         optKm: +o.km.toFixed(3), optRatio, optRoute,
