@@ -260,6 +260,9 @@ function CountryIssuePanel({ issue, onBack, onClose }) {
         <div className="ci-badges">
           <span className={"vd vd-" + vc}>{issue.verdict}</span>
           {issue.ref ? <span className="ci-ref">מול קו {issue.ref}</span> : null}
+          {issue.osrmFlag === "worth-review" && (
+            <span className="osrm-flag" title={`ניווט-רכב (OSRM) מודד ${issue.optKm} ק"מ בין אותן שתי הנקודות — קרוב למקטע המסומן (${issue.excessKm} ק"מ). ייתכן שזו כן דרך תקינה ולא עיקוף — כדאי לבדוק.`}>⚠️ לבדיקה</span>
+          )}
         </div>
         <div className="ci-metrics">
           <div className="ci-m"><b>{fmt(issue.excessKm)}</b><span>ק"מ מיותרים</span></div>

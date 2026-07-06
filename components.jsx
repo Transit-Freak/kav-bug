@@ -20,10 +20,14 @@ const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "
 // גרסת האפליקציה — *גרסה אחת ליום*: כל השינויים של אותו יום מתועדים תחת אותו
 // מספר, ומצטברים לאותה רשומת-יומן. (חותם-ה-cache KAVBUG_BUILD ב-index.html הוא
 // ערך נפרד שמוגדל בכל פריסה, כדי שקבצים ישנים לא יישארו ב-cache.)
-const KAVBUG_VERSION = "4.5";
+const KAVBUG_VERSION = "4.6";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
+  { version: "4.6", date: "6.7.2026", items: [
+    "בדיקת-ניווט אובייקטיבית (OSRM) הורחבה מ\"ספק\" בלבד לכל המקטעים המסומנים — לכל אחד יש עכשיו גם מרחק-נסיעה-אופטימלי לפי רכב, להשוואה. כשההכרעה \"אמיתי\" אך הניווט מראה שהמקטע כבר קרוב-לאופטימלי, הוא מסומן ⚠️ לבדיקה (בלי לשנות את ההכרעה אוטומטית — ייתכן שזו כניסה תקינה לצומת ולא עיקוף).",
+    "תוקן סימון-שווא אפשרי בבדיקת-הניווט: מקטע שבו האוטובוס קצר מהמסלול-האופטימלי-לרכב (ולא רק דומה לו) כבר לא מסומן לבדיקה — זה קורה כשלאוטובוס יש גישה לרחוב הסגור לרכב פרטי (למשל רחוב-שכונתי), ולא מעיד על טעות בזיהוי.",
+  ] },
   { version: "4.5", date: "4.7.2026", items: [
     "בתצוגת \"כל הארץ\" מוצג עכשיו מתי מתוכנן העדכון האוטומטי הבא — כדי שיהיה ברור שהדוח מתעדכן פעם בשבוע (לא בכל רגע), ולא ייראה כאילו הוא \"תקוע\".",
   ] },
@@ -630,7 +634,12 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
                         <td className="num">{i.excessKm} ק"מ</td>
                         <td className="num waste" title={i.tripsDay ? i.tripsDay + " נסיעות ביום עמוס" : ""}>{i.wasteDayKm != null ? i.wasteDayKm + " ק\"מ" : "—"}</td>
                         <td className="num">{i.ref}</td>
-                        <td><span className={"vd vd-" + vClass(i.verdict)}>{i.verdict}</span></td>
+                        <td>
+                          <span className={"vd vd-" + vClass(i.verdict)}>{i.verdict}</span>
+                          {i.osrmFlag === "worth-review" && (
+                            <span className="osrm-flag" title={`ניווט-רכב (OSRM) מודד ${i.optKm} ק"מ בין אותן שתי הנקודות — קרוב למקטע המסומן (${i.excessKm} ק"מ). ייתכן שזו כן דרך תקינה (למשל תמרון-כניסה) ולא עיקוף — כדאי לבדוק.`}>⚠️ לבדיקה</span>
+                          )}
+                        </td>
                         <td className="report-cell">
                           <button className="report-flag" title="דיווח על הקו הזה" onClick={(e) => { e.stopPropagation(); setReportIssue(i); }}>🚩</button>
                         </td>

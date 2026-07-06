@@ -833,6 +833,11 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
 .vd-doubt { background: var(--med-bg); color: var(--med); }
 .vd-incomp { background: var(--bg); color: var(--ink-faint); }
 .vd-cover { background: var(--brand-soft); color: var(--brand-ink); }
+.osrm-flag {
+  display: inline-block; margin-inline-start: 5px; font-size: 11px; font-weight: 700;
+  color: var(--med); background: var(--med-bg); border-radius: 999px; padding: 1px 7px;
+  white-space: nowrap; cursor: help;
+}
 @media (max-width: 560px) { .country-modal { width: 100%; } .country-table { font-size: 12px; } }
 .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .modal-head h2 { font-family: "Heebo", sans-serif; font-size: 21px; font-weight: 800; margin: 0; }
