@@ -570,7 +570,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
         excessKm: +(m.roadA - o.km).toFixed(3),
         tripsDay: m.tripsDay, wasteDayKm: +((m.roadA - o.km) * m.tripsDay).toFixed(1),
         ratio: null, verdict: "חשד עיקוף (רק לפי רכב)",
-        reason: `אין קו-אוטובוס אחר שמוכיח דרך קצרה יותר, אבל המקטע (${m.roadA.toFixed(2)} ק"מ) ארוך פי ${optRatio} מהדרך הקצרה בכביש לפי ניווט-רכב אובייקטיבי (${o.km.toFixed(2)} ק"מ) — כדאי לבדוק ידנית אם זהו עיקוף מיותר או צורך-גישה לגיטימי (כמו כניסה למתחם).`,
+        reason: `אין קו-אוטובוס אחר שמוכיח דרך קצרה יותר, אבל המקטע (${m.roadA.toFixed(2)} ק"מ) ארוך פי ${optRatio} מהדרך הקצרה בכביש לפי ניווט-רכב אובייקטיבי (${o.km.toFixed(2)} ק"מ) — כדאי לבדוק ידנית אם זהו עיקוף מיותר, או הסבר לגיטימי (כניסה למתחם, או מסדרון-תח"צ ייעודי כמו נתיב-BRT/מטרונית שרכב פרטי לא יכול לנסוע בו, ולכן ה-OSRM לא ראה אותו).`,
         seg: m.seg, refGeom: null, lineShape: m.lineShape,
         lat: m.lat, lng: m.lng,
         optKm: +o.km.toFixed(3), optRatio, optRoute,
