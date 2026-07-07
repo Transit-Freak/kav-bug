@@ -243,8 +243,7 @@ function divergentRuns(polyA, polyB, tol) {
 function CountryIssuePanel({ issue, onBack, onClose }) {
   const [reportOpen, setReportOpen] = React.useState(false);
   const vc = issue.verdict === "אמיתי" ? "real" : issue.verdict === "רעש" ? "noise"
-    : issue.verdict === "ספק" ? "doubt" : issue.verdict === "כיסוי לגיטימי" ? "cover"
-    : issue.verdict === "חשד עיקוף (רק לפי רכב)" ? "carsuspect" : "incomp";
+    : issue.verdict === "ספק" ? "doubt" : issue.verdict === "כיסוי לגיטימי" ? "cover" : "incomp";
   return (
     <aside className="panel">
       <div className="ci-panel">
@@ -486,11 +485,7 @@ function KavBug() {
     if (issue.seg && issue.seg.length > 1) {
       const from = { lat: issue.seg[0][0], lng: issue.seg[0][1] };
       const to = { lat: issue.seg[issue.seg.length - 1][0], lng: issue.seg[issue.seg.length - 1][1] };
-      // אין קו-ייחוס (refGeom) במקטעי "רק לפי רכב" — נופלים לדרך הקצרה-בכביש
-      // (optRoute, הסגול) כ"רפרנס" במקומו. בלעדיו wastefulRuns נופל לגיבוי
-      // הישר-בין-שתי-התחנות, שלא מזהה לולאה (הבליטה חוזרת לציר הישר בלי
-      // "נסיגה" מובהקת) — ומסמן רק את שתי הכניסות/יציאות ללולאה, לא אותה עצמה.
-      const runs = wastefulRuns(issue.seg, issue.refGeom || issue.optRoute, from, to) || [issue.seg];
+      const runs = wastefulRuns(issue.seg, issue.refGeom, from, to) || [issue.seg];
       runs.forEach((run) => {
         if (!run || run.length < 2) return;
         L.polyline(offsetRight(run, 5), { color: DETOUR, weight: 9, opacity: 1, lineCap: "round", lineJoin: "round" })

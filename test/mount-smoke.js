@@ -185,19 +185,6 @@ async function mount(element) {
     else ok("CountryIssuePanel מציג תג '⚠️ לבדיקה' כש-osrmFlag=worth-review");
   }
 
-  // (ה3) verdict="חשד עיקוף (רק לפי רכב)" — מקטע בלי קו-ייחוס תקף שאושר רק מול
-  //      ניווט-רכב אובייקטיבי. חייב תג-הכרעה נפרד (לא "real"/"incomp" רגיל).
-  if (CountryIssuePanel) {
-    const issue = { line: "9", operator: "אלקטרה אפיקים", from: "המשנה", to: "אסותא",
-      excessKm: 0.55, verdict: "חשד עיקוף (רק לפי רכב)", optKm: 0.6, optRatio: 1.9,
-      reason: "אין קו-אוטובוס אחר שמוכיח דרך קצרה יותר, אבל המקטע ארוך פי 1.9 מהדרך הקצרה בכביש." };
-    const { text, thrown, host } = await mount(React.createElement(CountryIssuePanel, { issue, onBack: () => {}, onClose: () => {} }));
-    if (thrown) bad("CountryIssuePanel(car-only) זרק: " + thrown.message);
-    else if (!/חשד עיקוף \(רק לפי רכב\)/.test(text)) bad("CountryIssuePanel לא הציג את הכרעת ה'רק לפי רכב'");
-    else if (host.querySelector(".vd-carsuspect") == null) bad("CountryIssuePanel לא נתן לתג-ה'רק לפי רכב' מחלקת-CSS ייעודית (vd-carsuspect)");
-    else ok("CountryIssuePanel מציג הכרעת 'חשד עיקוף (רק לפי רכב)' עם מחלקת-תג ייעודית");
-  }
-
   // (ו) IssueReportModal — שליחה מוצלחת ל-Formspree מציגה אישור
   {
     window.__formspreeShouldFail = false;
