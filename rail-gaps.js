@@ -85,11 +85,11 @@ function runUnzip(u8, handlers) {
 const ALIAS = {
   "באר שבע אוניברסיטה": "באר שבע צפון", "בית יהושוע": "בית יהושע", "הוד השרון סוקולוב": "הוד השרון",
   "חיפה בת גלים": "בת גלים", "חיפה חוף הכרמל": "חוף הכרמל", "חיפה מרכז השמונה": "חיפה מרכז",
-  "חוצות המפרץ": "חוצות מפרץ", "כפר סבא נורדאו": "כפר סבא", "מרכזית המפרץ קו החוף לב המפ": "מרכזית המפרץ קו החוף",
+  "חוצות המפרץ": "חוצות מפרץ", "כפר סבא נורדאו": "כפר סבא", "מרכזית המפרץ קו החוף לב המפרץ": "מרכזית המפרץ קו החוף",
   "נתבג": "נתב ג", "פתח תקווה סגולה": "סגולה", "פתח תקווה קרית אריה": "קרית אריה", "קרית מלאכי יואב": "קרית מלאכי",
   "קרית ספיר נתניה": "נתניה קרית ספיר", "ראשון לציון הראשונים": "ראשונים", "ראשון לציון משה דיין": "רשל צ משה דיין",
-  "שער צומת חולון": "צומת חולון", "תל אביב אוניברסיטה": "תא אוניברסיטה", "תל אביב השלום": "השלום",
-  "תל אביב סבידור מרכז": "תל אביב מרכז",
+  "שער צומת חולון": "צומת חולון", "תל אביב אוניברסיטה": "תא אוניברסיטה", "תל אביב האוניברסיטה אקספו": "תא אוניברסיטה",
+  "תל אביב השלום": "השלום", "תל אביב סבידור מרכז": "תל אביב מרכז",
 };
 const norm = (s) => (s || "").replace(/קריית/g, "קרית").replace(/[''"׳״\-\/()]/g, " ").replace(/\s+/g, " ").trim();
 const canon = (s) => { const n = norm(s); return ALIAS[n] || n; };
@@ -177,7 +177,7 @@ async function railFullStops(fromCode, toCode, hour, trainNum, codeName) {
   try {
     const r = await fetch(`https://data.gov.il/api/3/action/datastore_search?resource_id=${STATIONS_DATASET}&limit=200`, { headers: { "user-agent": "kavbug-rail" } });
     const j = await r.json();
-    for (const rec of (j.result && j.result.records) || []) if (rec.ASSET_NO && rec.NAME) codeName[rec.ASSET_NO] = rec.NAME;
+    for (const rec of (j.result && j.result.records) || []) if (rec.ASSET_NO && rec.ASSET_NAME) codeName[rec.ASSET_NO] = rec.ASSET_NAME;
   } catch (e) { console.error("  אזהרה: כשל בהורדת מיפוי-תחנות:", e.message); }
   console.error("  תחנות-רכבת:", Object.keys(codeName).length);
   const nameToCode = {}; for (const [code, nm] of Object.entries(codeName)) nameToCode[canon(nm)] = code;
