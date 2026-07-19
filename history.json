@@ -47,5 +47,12 @@
   "realCount": 147,
   "totalWasteDayKm": 463,
   "railGapsCount": 16
+ },
+ {
+  "date": "2026-07-19",
+  "totalLines": 6146,
+  "realCount": 147,
+  "totalWasteDayKm": 487,
+  "railGapsCount": 16
  }
 ]
