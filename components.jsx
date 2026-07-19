@@ -20,10 +20,13 @@ const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "
 // גרסת האפליקציה — *גרסה אחת ליום*: כל השינויים של אותו יום מתועדים תחת אותו
 // מספר, ומצטברים לאותה רשומת-יומן. (חותם-ה-cache KAVBUG_BUILD ב-index.html הוא
 // ערך נפרד שמוגדל בכל פריסה, כדי שקבצים ישנים לא יישארו ב-cache.)
-const KAVBUG_VERSION = "4.7";
+const KAVBUG_VERSION = "4.8";
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
+  { version: "4.8", date: "19.7.2026", items: [
+    "\"קו באג · רכבות\" (השוואת לוח-הזמנים הרשמי מול אתר רכבת ישראל) הופסק. פנינו לרכבת ישראל בבקשה מפורשת לאשר שימוש ב-API הציבורי שלהם לצורך הכלי, והם השיבו בסירוב — הנימוק שניתן הוא הצורך לשמור על יציבותן וזמינותן של המערכות והשירותים המיועדים לכלל ציבור הנוסעים. בהתאם לכך, הופסקה כל שאילתה מול ה-API של רכבת ישראל (אוטומטית וידנית כאחד), וסריקת \"קו באג · רכבות\" הוסרה גם מהעדכון השבועי האוטומטי. דף rail.html מציג כעת הודעה על כך במקום נתונים חיים.",
+  ] },
   { version: "4.7", date: "7.7.2026", items: [
     "נוסתה והוסרה קטגוריית-הכרעה נפרדת (\"חשד עיקוף — רק לפי רכב\", מגרסה 4.6) למקטעים בלי קו-אוטובוס אחר שמוכיח דרך קצרה יותר, שנבדקה מול ניווט-רכב אובייקטיבי בלבד. בבדיקה התברר שגיאומטרית אי-אפשר להבדיל בין עיקוף מיותר אמיתי לבין הסבר לגיטימי (למשל כביש מפוצל שדורש נסיעה לצומת-מעבר כדי להגיע לצד השני של התחנה) — לשניהם אותה חתימה גיאומטרית בדיוק. בלי הוכחת-קו אמיתית זה לא מספיק מדויק כדי להציג כממצא.",
   ] },
@@ -516,7 +519,7 @@ function IssueReportModal({ issue, onClose }) {
 function CountryModal({ open, onClose, onPick, initialCity, inline }) {
   const [data, setData] = React.useState(null);
   const [err, setErr] = React.useState(null);
-  const [history, setHistory] = React.useState(null); // מגמות: [{date,totalLines,realCount,totalWasteDayKm,railGapsCount}]
+  const [history, setHistory] = React.useState(null); // מגמות: [{date,totalLines,realCount,totalWasteDayKm}]
   const [reportIssue, setReportIssue] = React.useState(null); // עיקוף שנבחר לדיווח (🚩) | null
   const [filter, setFilter] = React.useState("אמיתי");
   const [q, setQ] = React.useState("");
