@@ -408,7 +408,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       const excessKm = +(it.km || d.excessKm || 0).toFixed(3);
       const tripsDay = L._tripsDay || 0;
       issues.push({
-        line: L.number, operator: L.operator, type: it.type,
+        line: L.number, operator: L.operator, dir: (L.name || "").trim(), type: it.type,
         from: it.from && it.from.name, to: it.to && it.to.name,
         lat: it.from && it.from.lat, lng: it.from && it.from.lng,
         ref: it.refNumber, excessKm,

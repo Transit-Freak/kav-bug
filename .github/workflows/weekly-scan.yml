@@ -12,6 +12,8 @@ on:
   schedule:
     - cron: "0 3 * * 0"   # יום ראשון, 03:00 UTC
   workflow_dispatch: {}
+  push:
+    branches: [scan-go]   # ענף-הצתה להרצה ידנית מיידית
 
 permissions:
   contents: write
@@ -58,5 +60,6 @@ jobs:
             echo "אין שינוי — לא מבצע commit."
           else
             git commit -m "סריקה שבועית: כל הארץ ($(date -u +%Y-%m-%d))"
-            git push
+            # תמיד ל-main — גם כשהריצה הוצתה מענף scan-go
+            git push origin HEAD:main
           fi
