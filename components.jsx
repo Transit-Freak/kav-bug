@@ -53,6 +53,7 @@ const CHANGELOG = [
     "הפרדה ברורה בין בעיית-קידוד אמיתית לחשד-מפה (בקשת משתמש): \"אמיתי\" שניווט-הרכב סותר אותו (המסלול כבר כמעט מיטבי, אך קו-ההשוואה קצר על הנייר) מוצג עכשיו כקטגוריה נפרדת \"חשד שרטוט/מפה\" עם צ'יפ-סינון משלה והסבר מלא — במקום דגל ⚠️ קטן ליד \"אמיתי\". המקרה שחשף: מקטע בית ספר נטופה בנוף הגליל שסומן \"אמיתי\" בעשרות קווים בגלל הפרש-שרטוט של ~100 מ' מול קו 34. ארצית: 33 מתוך 150 ה\"אמיתיים\" עברו לקטגוריה החדשה.",
     "סיכומי \"עיקופים אמיתיים\" ו\"ק\"מ מבוזבזים\" (עירוני וארצי) לא כוללים יותר את חשדות-המפה.",
     "רשומות כפולות בדוח הארצי (אותו קו ואותו מקטע פעמיים — וריאנטים זהים) מאוחדות בתצוגה.",
+    "המק״ט מוצג מתחת למספר הקו בטבלה, והחיפוש עובד גם לפי יעד ולפי מק״ט (בקשת משתמש).",
     "הסריקה הארצית רצה מעכשיו כל בוקר במקום פעם בשבוע, מיושרת לצינור היומי של הקו בזמן (אחרי חלון הפרסום של משרד התחבורה, ~11:00) — אותו קובץ, אותו בוקר, כמו צינור אחד (בקשת משתמש).",
     "לכל ממצא מוצג עכשיו גם כיוון-הנסיעה של הקו (🧭 מוצא ← יעד) וגם המזהה המלא של הווריאנט — כיוון, חלופה ומק״ט (אותם מזהים כמו באתר \"הקו בזמן\") — בטבלה ובפאנל, כולל קישור ישיר לדף הקו בהקו בזמן. הנתונים נכנסים לדוח מהסריקה הבאה ואילך (בקשת משתמש).",
   ] },
@@ -607,7 +608,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
   const cityIssues = issues.filter(inCity);
   const shown = cityIssues.filter((i) =>
     (filter === "הכל" || dispVerdict(i) === filter) &&
-    (!qn || ((i.line || "") + " " + (i.operator || "") + " " + (i.from || "") + " " + (i.to || "")).includes(qn))
+    (!qn || ((i.line || "") + " " + (i.operator || "") + " " + (i.from || "") + " " + (i.to || "") + " " + (i.dir || "") + " " + (i.rd || "")).includes(qn))
   ).sort((a, b) => sort === "excess" ? (b.excessKm - a.excessKm) : ((b.wasteDayKm || 0) - (a.wasteDayKm || 0)));
   const count = (v) => v === "הכל" ? cityIssues.length : cityIssues.filter((i) => dispVerdict(i) === v).length;
   const cityReal = cityIssues.filter((i) => dispVerdict(i) === "אמיתי").length;
@@ -669,7 +670,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
               <button className={"chip chip-sort" + (sort === "waste" ? " on" : "")} onClick={() => setSort(sort === "waste" ? "excess" : "waste")}>
                 {sort === "waste" ? "↓ מיון: מבזבז/יום" : "↓ מיון: ק\"מ מיותרים"}
               </button>
-              <input className="country-search" value={q} placeholder="חיפוש קו / מפעיל / תחנה…" onChange={(e) => setQ(e.target.value)} />
+              <input className="country-search" value={q} placeholder="חיפוש קו / מק״ט / יעד / מפעיל / תחנה…" onChange={(e) => setQ(e.target.value)} />
             </div>
             <div className="country-table">
               <table>
@@ -681,7 +682,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
                       <tr key={k} className={onPick && hasGeo ? "clickable" : ""}
                         onClick={onPick && hasGeo ? () => onPick(i) : undefined}
                         title={onPick && hasGeo ? "הצג על המפה" : ""}>
-                        <td className="num">{i.line}</td>
+                        <td className="num">{i.line}{i.rd ? <div className="line-mkt" title="מק״ט — מספר הרישוי של הקו במשרד התחבורה">{String(i.rd).split("-")[0].replace(/^0+/, "")}</div> : null}</td>
                         <td>{i.operator}</td>
                         <td className="seg">{i.from} → {i.to}{onPick && hasGeo ? <span className="map-ico"> 🗺️</span> : null}{i.dir ? <div className="seg-dir" title="כיוון הנסיעה של הקו שבו נמצא המקטע">🧭 {fmtDir(i.dir)}{i.rd ? <> · {fmtRd(i.rd)}</> : null}</div> : null}</td>
                         <td className="num">{i.excessKm} ק"מ</td>

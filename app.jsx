@@ -255,6 +255,7 @@ function CountryIssuePanel({ issue, onBack, onClose }) {
         </div>
         <div className="ci-head">
           <span className="ci-line">קו {issue.line}</span>
+          {issue.rd ? <span className="ci-op" title="מק״ט — מספר הרישוי של הקו במשרד התחבורה">מק״ט {String(issue.rd).split("-")[0].replace(/^0+/, "")}</span> : null}
           {issue.operator ? <span className="ci-op">{issue.operator}</span> : null}
         </div>
         <div className="ci-seg">{issue.from} → {issue.to}</div>
