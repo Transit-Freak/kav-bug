@@ -63,6 +63,9 @@ jobs:
             echo "אין שינוי — לא מבצע commit."
           else
             git commit -m "סריקה יומית: כל הארץ ($(date -u +%Y-%m-%d))"
-            # תמיד ל-main — גם כשהריצה הוצתה מענף scan-go
+            # תמיד ל-main — גם כשהריצה הוצתה מענף scan-go. אם main זז בזמן
+            # הסריקה (מיזוג PR) — מיישרים לפניו; קובצי התוצאה לא מתנגשים בקוד.
+            git fetch origin main
+            git rebase origin/main
             git push origin HEAD:main
           fi
