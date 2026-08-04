@@ -201,6 +201,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       routes.set(f[ix["route_id"]], {
         number: (f[ix["route_short_name"]] || "").trim(),
         name: (f[ix["route_long_name"]] || "").trim(),
+        desc: (f[ix["route_desc"]] || "").trim(),   // מק"ט-כיוון-חלופה
         agencyId: f[ix["agency_id"]],
       });
     }) },
@@ -312,7 +313,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
     lines.push({
       number: info.number, operator: agencies.get(info.agencyId) || "", color: DEFAULT_COLOR,
       name: info.name || ("קו " + info.number), stops: pts, shape: sid ? (shapePoly.get(sid) || null) : null,
-      _rid: rid, _tripsDay: tripsBusiest.get(rid) || 0,
+      _rid: rid, _tripsDay: tripsBusiest.get(rid) || 0, _desc: info.desc || "",
     });
   }
   console.error("  קווים שנבנו:", lines.length, "| זמן עד כה:", secs(tnow() - t0));
@@ -408,7 +409,8 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       const excessKm = +(it.km || d.excessKm || 0).toFixed(3);
       const tripsDay = L._tripsDay || 0;
       issues.push({
-        line: L.number, operator: L.operator, dir: (L.name || "").trim(), type: it.type,
+        line: L.number, operator: L.operator, dir: (L.name || "").trim(),
+        rd: L._desc || "", type: it.type,
         from: it.from && it.from.name, to: it.to && it.to.name,
         lat: it.from && it.from.lat, lng: it.from && it.from.lng,
         ref: it.refNumber, excessKm,
