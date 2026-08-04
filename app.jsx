@@ -258,6 +258,7 @@ function CountryIssuePanel({ issue, onBack, onClose }) {
           {issue.operator ? <span className="ci-op">{issue.operator}</span> : null}
         </div>
         <div className="ci-seg">{issue.from} → {issue.to}</div>
+        {issue.dir ? <div className="ci-dir" title="כיוון הנסיעה של הקו שבו נמצא המקטע">🧭 {fmtDir(issue.dir)}</div> : null}
         <div className="ci-badges">
           <span className={"vd vd-" + vc} title={dv === MAP_DOUBT ? mapDoubtTitle(issue) : ""}>{dv === MAP_DOUBT ? "🗺️ " : ""}{dv}</span>
           {issue.ref ? <span className="ci-ref">מול קו {issue.ref}</span> : null}
