@@ -38,12 +38,26 @@ jobs:
       - name: התקנת תלות (fflate)
         run: npm install fflate --no-save
 
-      - name: הורדת ה-GTFS הארצי ממשרד התחבורה (עם retry)
+      - name: הורדת ה-GTFS הארצי (משרד התחבורה, עם גיבוי מארכיון האוטובוס הפתוח)
         run: |
-          curl -sSL --retry 6 --retry-delay 15 --retry-all-errors --max-time 900 \
-            -o israel-gtfs.zip \
-            https://gtfs.mot.gov.il/gtfsfiles/israel-public-transportation.zip
+          # השרת של משרד התחבורה נופל/חוסם לפעמים — אותו קובץ בדיוק מועלה כל
+          # בוקר לארכיון הציבורי של האוטובוס הפתוח (S3), שיציב בהרבה.
+          if ! curl -sSL --retry 3 --retry-delay 10 --retry-all-errors --max-time 600 \
+              -o israel-gtfs.zip \
+              https://gtfs.mot.gov.il/gtfsfiles/israel-public-transportation.zip; then
+            echo "משרד התחבורה לא זמין — עובר לארכיון האוטובוס הפתוח"
+            for D in "$(date -u +%Y/%m/%d)" "$(date -u -d yesterday +%Y/%m/%d)"; do
+              echo "מנסה את קובץ ${D}…"
+              if curl -sSL --retry 3 --retry-delay 10 --retry-all-errors --max-time 900 \
+                  -o israel-gtfs.zip \
+                  "https://openbus-stride-public.s3.eu-west-1.amazonaws.com/gtfs_archive/${D}/israel-public-transportation.zip"; then
+                break
+              fi
+            done
+          fi
           ls -lh israel-gtfs.zip
+          # ודא שזה באמת ZIP ולא דף שגיאה
+          head -c 2 israel-gtfs.zip | grep -q PK
 
       - name: סריקת כל הארץ (עיקופי אוטובוסים)
         run: node --max-old-space-size=6144 scan-country.js israel-gtfs.zip country-scan
