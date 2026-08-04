@@ -242,8 +242,9 @@ function divergentRuns(polyA, polyB, tol) {
 // מ-components.jsx (שנטען לפני app.jsx).
 function CountryIssuePanel({ issue, onBack, onClose }) {
   const [reportOpen, setReportOpen] = React.useState(false);
-  const vc = issue.verdict === "אמיתי" ? "real" : issue.verdict === "רעש" ? "noise"
-    : issue.verdict === "ספק" ? "doubt" : issue.verdict === "כיסוי לגיטימי" ? "cover" : "incomp";
+  const dv = dispVerdict(issue);   // גלובלי מ-components.jsx
+  const vc = dv === "אמיתי" ? "real" : dv === "רעש" ? "noise"
+    : dv === "ספק" ? "doubt" : dv === "כיסוי לגיטימי" ? "cover" : dv === MAP_DOUBT ? "mapdbt" : "incomp";
   return (
     <aside className="panel">
       <div className="ci-panel">
@@ -258,10 +259,13 @@ function CountryIssuePanel({ issue, onBack, onClose }) {
         </div>
         <div className="ci-seg">{issue.from} → {issue.to}</div>
         <div className="ci-badges">
-          <span className={"vd vd-" + vc}>{issue.verdict}</span>
+          <span className={"vd vd-" + vc} title={dv === MAP_DOUBT ? mapDoubtTitle(issue) : ""}>{dv === MAP_DOUBT ? "🗺️ " : ""}{dv}</span>
           {issue.ref ? <span className="ci-ref">מול קו {issue.ref}</span> : null}
-          {issue.osrmFlag === "worth-review" && (
-            <span className="osrm-flag" title={`ניווט-רכב (OSRM) מודד ${issue.optKm} ק"מ בין אותן שתי הנקודות — קרוב למקטע המסומן (${issue.excessKm} ק"מ). ייתכן שזו כן דרך תקינה ולא עיקוף — כדאי לבדוק.`}>⚠️ לבדיקה</span>
+          {dv === MAP_DOUBT && (
+            <div className="modal-hint" style={{ margin: "6px 0 0" }}>
+              קו ההשוואה קצר יותר על הנייר, אבל לפי הניווט המסלול כמעט מיטבי — כנראה הבדל
+              שרטוט בין הקווים או אי-דיוק ברשת המפה, לא עיקוף אמיתי בשטח.
+            </div>
           )}
         </div>
         <div className="ci-metrics">
