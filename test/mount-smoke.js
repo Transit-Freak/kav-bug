@@ -174,14 +174,15 @@ async function mount(element) {
     else ok("CountryIssuePanel מציג פרטי-עיקוף (קו 6, הכרעה) — לא מסך 'בחרו עיר'");
   } else bad("CountryIssuePanel לא חולץ מ-app.jsx");
 
-  // (ה2) osrmFlag="worth-review" מוצג כתג "⚠️ לבדיקה" (בדיקת-הצלב מול ניווט-OSRM
+  // (ה2) osrmFlag="worth-review" על "אמיתי" מוצג כקטגוריה נפרדת "חשד שרטוט/מפה"
+  // (מגרסה 4.9 — במקום תג "⚠️ לבדיקה" קטן; בדיקת-הצלב מול ניווט-OSRM
   //      שנוספה אחרי שנמצא שסימון-שווא אפשרי כשלאוטובוס יש גישה שרכב-פרטי אין לו).
   if (CountryIssuePanel) {
     const issue = { line: "28", operator: "אגד", from: "מדעטק/בלפור", to: "בית הקרנות",
       ref: "208", excessKm: 0.126, verdict: "אמיתי", optKm: 1.197, optRatio: 1.05, osrmFlag: "worth-review" };
     const { text, thrown } = await mount(React.createElement(CountryIssuePanel, { issue, onBack: () => {}, onClose: () => {} }));
     if (thrown) bad("CountryIssuePanel(osrmFlag) זרק: " + thrown.message);
-    else if (!/לבדיקה/.test(text)) bad("CountryIssuePanel לא הציג את תג ה-osrmFlag ('⚠️ לבדיקה')");
+    else if (!/חשד שרטוט/.test(text)) bad("CountryIssuePanel לא הציג את קטגוריית 'חשד שרטוט/מפה' עבור osrmFlag");
     else ok("CountryIssuePanel מציג תג '⚠️ לבדיקה' כש-osrmFlag=worth-review");
   }
 

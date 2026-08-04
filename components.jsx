@@ -20,10 +20,25 @@ const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "
 // גרסת האפליקציה — *גרסה אחת ליום*: כל השינויים של אותו יום מתועדים תחת אותו
 // מספר, ומצטברים לאותה רשומת-יומן. (חותם-ה-cache KAVBUG_BUILD ב-index.html הוא
 // ערך נפרד שמוגדל בכל פריסה, כדי שקבצים ישנים לא יישארו ב-cache.)
-const KAVBUG_VERSION = "4.8";
+const KAVBUG_VERSION = "4.9";
+
+// קטגוריית-תצוגה נפרדת ל"אמיתי" שה-OSRM סותר: קו-ההשוואה קצר יותר על
+// הנייר, אבל הניווט האובייקטיבי מראה שהמסלול כבר כמעט מיטבי — הפער כנראה
+// נובע מהבדלי שרטוט בין הקווים או מאי-דיוק ברשת המפה, לא מעיקוף בשטח.
+// ההכרעה בנתונים לא משתנה — רק ההצגה מפרידה, כדי שקידוד-בעייתי אמיתי לא
+// יתערבב עם חשדות-מפה (בקשת משתמש: אותו מקטע הופיע כ"אמיתי" בעשרות קווים).
+// var/function (לא const) — כדי שיחצו גם את סביבות ה-eval של הבדיקות
+var MAP_DOUBT = "חשד שרטוט/מפה";
+function dispVerdict(i) { return (i && i.verdict === "אמיתי" && i.osrmFlag === "worth-review") ? MAP_DOUBT : (i ? i.verdict : ""); }
+function mapDoubtTitle(i) { return `קו ההשוואה${i.ref ? ` (${i.ref})` : ""} קצר יותר על הנייר, אבל לפי ניווט אובייקטיבי (OSRM) המסלול כבר כמעט מיטבי (פי ${i.optRatio ?? "?"} מהדרך הקצרה בכביש) — ההפרש כנראה נובע מהבדל שרטוט בין הקווים או מאי-דיוק ברשת המפה, לא מעיקוף אמיתי בשטח.`; }
 
 // יומן שינויים — מוצג בלחיצה על מספר הגרסה. הראש = הגרסה הנוכחית.
 const CHANGELOG = [
+  { version: "4.9", date: "4.8.2026", items: [
+    "הפרדה ברורה בין בעיית-קידוד אמיתית לחשד-מפה (בקשת משתמש): \"אמיתי\" שניווט-הרכב סותר אותו (המסלול כבר כמעט מיטבי, אך קו-ההשוואה קצר על הנייר) מוצג עכשיו כקטגוריה נפרדת \"חשד שרטוט/מפה\" עם צ'יפ-סינון משלה והסבר מלא — במקום דגל ⚠️ קטן ליד \"אמיתי\". המקרה שחשף: מקטע בית ספר נטופה בנוף הגליל שסומן \"אמיתי\" בעשרות קווים בגלל הפרש-שרטוט של ~100 מ' מול קו 34. ארצית: 33 מתוך 150 ה\"אמיתיים\" עברו לקטגוריה החדשה.",
+    "סיכומי \"עיקופים אמיתיים\" ו\"ק\"מ מבוזבזים\" (עירוני וארצי) לא כוללים יותר את חשדות-המפה.",
+    "רשומות כפולות בדוח הארצי (אותו קו ואותו מקטע פעמיים — וריאנטים זהים) מאוחדות בתצוגה.",
+  ] },
   { version: "4.8", date: "19.7.2026", items: [
     "\"קו באג · רכבות\" (השוואת לוח-הזמנים הרשמי מול אתר רכבת ישראל) הופסק. פנינו לרכבת ישראל בבקשה מפורשת לאשר שימוש ב-API הציבורי שלהם לצורך הכלי, והם השיבו בסירוב — הנימוק שניתן הוא הצורך לשמור על יציבותן וזמינותן של המערכות והשירותים המיועדים לכלל ציבור הנוסעים. בהתאם לכך, הופסקה כל שאילתה מול ה-API של רכבת ישראל (אוטומטית וידנית כאחד), וסריקת \"קו באג · רכבות\" הוסרה גם מהעדכון השבועי האוטומטי. דף rail.html מציג כעת הודעה על כך במקום נתונים חיים.",
   ] },
@@ -560,19 +575,27 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
     else if (initialCity === null) { setCity(null); setCityText(""); setCityGeo({ status: "idle" }); }
   }, [open, inline, initialCity, lookupCity]);
   if (!open && !inline) return null;
-  const issues = (data && data.issues) || [];
+  const issues = React.useMemo(() => {
+    const seen = new Set(); const out = [];
+    for (const i of (data && data.issues) || []) {
+      const k = [i.line, i.operator, i.from, i.to, i.excessKm].join("|");
+      if (seen.has(k)) continue;
+      seen.add(k); out.push(i);
+    }
+    return out;
+  }, [data]);
   const qn = q.trim();
   const bb = city && city.bbox;
   const inCity = (i) => !bb || (i.lat != null && i.lat >= bb[0] && i.lat <= bb[2] && i.lng >= bb[1] && i.lng <= bb[3]);
   const cityIssues = issues.filter(inCity);
   const shown = cityIssues.filter((i) =>
-    (filter === "הכל" || i.verdict === filter) &&
+    (filter === "הכל" || dispVerdict(i) === filter) &&
     (!qn || ((i.line || "") + " " + (i.operator || "") + " " + (i.from || "") + " " + (i.to || "")).includes(qn))
   ).sort((a, b) => sort === "excess" ? (b.excessKm - a.excessKm) : ((b.wasteDayKm || 0) - (a.wasteDayKm || 0)));
-  const count = (v) => v === "הכל" ? cityIssues.length : cityIssues.filter((i) => i.verdict === v).length;
-  const cityReal = cityIssues.filter((i) => i.verdict === "אמיתי").length;
-  const cityWaste = Math.round(cityIssues.filter((i) => i.verdict === "אמיתי").reduce((s, i) => s + (i.wasteDayKm || 0), 0));
-  const vClass = (v) => v === "אמיתי" ? "real" : v === "רעש" ? "noise" : v === "ספק" ? "doubt" : v === "כיסוי לגיטימי" ? "cover" : "incomp";
+  const count = (v) => v === "הכל" ? cityIssues.length : cityIssues.filter((i) => dispVerdict(i) === v).length;
+  const cityReal = cityIssues.filter((i) => dispVerdict(i) === "אמיתי").length;
+  const cityWaste = Math.round(cityIssues.filter((i) => dispVerdict(i) === "אמיתי").reduce((s, i) => s + (i.wasteDayKm || 0), 0));
+  const vClass = (v) => v === "אמיתי" ? "real" : v === "רעש" ? "noise" : v === "ספק" ? "doubt" : v === "כיסוי לגיטימי" ? "cover" : v === MAP_DOUBT ? "mapdbt" : "incomp";
   // מגמה ארצית: משווה את הרשומה האחרונה ב-history.json לזו שלפניה. רק בתצוגת
   // "כל הארץ" (לא כשמסוננים לעיר — history הוא סיכום ארצי בלבד).
   const trend = (!city && history && history.length >= 2) ? (() => {
@@ -601,7 +624,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
             <p className="modal-hint">
               {city
                 ? <>{city.name} · <b>{cityReal}</b> עיקופים אמיתיים{cityWaste ? <> · <b>{cityWaste.toLocaleString("he-IL")} ק"מ מבוזבזים ביום עמוס</b></> : null}</>
-                : <>{Number(data.totalLines).toLocaleString("he-IL")} קווים נסרקו · <b>{data.realCount}</b> עיקופים אמיתיים{data.totalWasteDayKm != null ? <> · <b>{Number(data.totalWasteDayKm).toLocaleString("he-IL")} ק"מ מבוזבזים ביום עמוס</b></> : null}</>}
+                : <>{Number(data.totalLines).toLocaleString("he-IL")} קווים נסרקו · <b>{issues.filter((i) => dispVerdict(i) === "אמיתי").length}</b> עיקופים אמיתיים · <b>{Math.round(issues.filter((i) => dispVerdict(i) === "אמיתי").reduce((s2, i) => s2 + (i.wasteDayKm || 0), 0)).toLocaleString("he-IL")} ק"מ מבוזבזים ביום עמוס</b></>}
               {data.generatedAt ? " · עודכן " + new Date(data.generatedAt).toLocaleDateString("he-IL") : ""}
               {onPick ? " · לחצו על שורה כדי להציג על המפה 🗺️" : ""}
             </p>
@@ -621,7 +644,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
               </p>
             )}
             <div className="country-controls">
-              {["אמיתי", "כיסוי לגיטימי", "ספק", "לא ניתן להשוואה", "רעש", "הכל"].map((v) => (
+              {["אמיתי", MAP_DOUBT, "כיסוי לגיטימי", "ספק", "לא ניתן להשוואה", "רעש", "הכל"].map((v) => (
                 <button key={v} className={"chip chip-" + vClass(v) + (filter === v ? " on" : "")} onClick={() => setFilter(v)}>
                   {v} <span className="chip-n">{count(v)}</span>
                 </button>
@@ -648,10 +671,10 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
                         <td className="num waste" title={i.tripsDay ? i.tripsDay + " נסיעות ביום עמוס" : ""}>{i.wasteDayKm != null ? i.wasteDayKm + " ק\"מ" : "—"}</td>
                         <td className="num">{i.ref}</td>
                         <td>
-                          <span className={"vd vd-" + vClass(i.verdict)}>{i.verdict}</span>
-                          {i.osrmFlag === "worth-review" && (
-                            <span className="osrm-flag" title={`ניווט-רכב (OSRM) מודד ${i.optKm} ק"מ בין אותן שתי הנקודות — קרוב למקטע המסומן (${i.excessKm} ק"מ). ייתכן שזו כן דרך תקינה (למשל תמרון-כניסה) ולא עיקוף — כדאי לבדוק.`}>⚠️ לבדיקה</span>
-                          )}
+                          <span className={"vd vd-" + vClass(dispVerdict(i))}
+                            title={dispVerdict(i) === MAP_DOUBT ? mapDoubtTitle(i) : ""}>
+                            {dispVerdict(i) === MAP_DOUBT ? "🗺️ " : ""}{dispVerdict(i)}
+                          </span>
                         </td>
                         <td className="report-cell">
                           <button className="report-flag" title="דיווח על הקו הזה" onClick={(e) => { e.stopPropagation(); setReportIssue(i); }}>🚩</button>
