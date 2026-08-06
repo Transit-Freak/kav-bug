@@ -258,8 +258,6 @@ function CountryIssuePanel({ issue, onBack, onClose }) {
           {issue.rd ? <span className="ci-op" title="מק״ט — מספר הרישוי של הקו במשרד התחבורה">מק״ט {String(issue.rd).split("-")[0].replace(/^0+/, "")}</span> : null}
           {issue.operator ? <span className="ci-op">{issue.operator}</span> : null}
         </div>
-        <div className="ci-seg">{issue.from} → {issue.to}</div>
-        {issue.dir ? <div className="ci-dir" title="כיוון הנסיעה של הקו שבו נמצא המקטע">🧭 {fmtDir(issue.dir)}</div> : null}
         {issue.rd ? (
           <div className="ci-dir">
             {fmtRd(issue.rd)}
@@ -269,6 +267,8 @@ function CountryIssuePanel({ issue, onBack, onClose }) {
               title="היסטוריית השינויים המלאה של הווריאנט הזה באתר הקו בזמן (נפתח בכרטיסייה חדשה)">🕰️ הקו בזמן</a>
           </div>
         ) : null}
+        <div className="ci-seg">{issue.from} → {issue.to}{issue.city ? <span className="ci-city" title="העיר של המקטע השגוי"> · 📍 {issue.city}</span> : null}</div>
+        {issue.dir ? <div className="ci-dir" title="כיוון הנסיעה של הקו שבו נמצא המקטע">🧭 {fmtDir(issue.dir)}</div> : null}
         <div className="ci-badges">
           <span className={"vd vd-" + vc} title={dv === MAP_DOUBT ? mapDoubtTitle(issue) : ""}>{dv === MAP_DOUBT ? "🗺️ " : ""}{dv}</span>
           {issue.ref ? <span className="ci-ref">מול קו {issue.ref}</span> : null}
@@ -521,8 +521,11 @@ function KavBug() {
       L.polyline(issue.optRoute, { color: "#7c3aed", weight: 5, opacity: 0.9, dashArray: "1 8", lineCap: "round", lineJoin: "round" })
         .addTo(grp).bindTooltip(`הדרך הקצרה בכביש (ניווט)${issue.optRatio ? ` · הקו נוסע פי ${issue.optRatio}` : ""}`, { className: "seg-tip", sticky: true });
     }
-    const fit = (shape && shape.length > 1) ? shape : (seg || []).concat(ref || []);
-    if (fit.length) map.fitBounds(L.latLngBounds(fit), { padding: [50, 50], maxZoom: 16 });
+    // מיקוד בתקלה עצמה (בקשת משתמש): המקטע הבעייתי + קו-ההשוואה — לא כל הקו.
+    // הקו המלא עדיין מצויר בכחול; אפשר להתרחק ידנית כדי לראותו.
+    const fit = (seg && seg.length > 1) ? seg.concat(ref && ref.length > 1 ? ref : [])
+      : (shape && shape.length > 1) ? shape : (seg || []).concat(ref || []);
+    if (fit.length) map.fitBounds(L.latLngBounds(fit), { padding: [60, 60], maxZoom: 16 });
     else if (issue.lat != null) map.setView([issue.lat, issue.lng], 15);
     // לא מחליפים פאנל — רשימת-הדוח נשארת (גלילה/סינון נשמרים), המפה מתעדכנת.
     setTimeout(() => map.invalidateSize(), 80);

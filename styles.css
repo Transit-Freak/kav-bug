@@ -1204,3 +1204,6 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
   grid-column: 1 / -1; font-size: 12.5px; line-height: 1.55; font-weight: 600;
   color: var(--ink-soft); overflow-wrap: anywhere;
 }
+
+.ci-city { color: #64748b; font-weight: 700; font-size: 13.5px; }
+.seg-city { color: #64748b; font-weight: 600; font-size: 12.5px; }

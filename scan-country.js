@@ -192,7 +192,10 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
     "stops.txt": { onLine: rowHandler((f, ix) => {
       const lat = +f[ix["stop_lat"]], lng = +f[ix["stop_lon"]];
       if (!isFinite(lat) || !isFinite(lng)) return;
-      stops.set(f[ix["stop_id"]], { name: (f[ix["stop_name"]] || "").trim(), lat, lng });
+      // העיר יושבת בתוך stop_desc: "רחוב: X עיר: Y רציף: ..." — נשלפת לתצוגה
+      const desc = ix["stop_desc"] != null ? (f[ix["stop_desc"]] || "") : "";
+      const cm = desc.match(/עיר:\s*([^:]*?)\s*רציף/);
+      stops.set(f[ix["stop_id"]], { name: (f[ix["stop_name"]] || "").trim(), lat, lng, city: cm ? cm[1].trim() : "" });
     }) },
     "agency.txt": { onLine: rowHandler((f, ix) => {
       agencies.set(f[ix["agency_id"]], (f[ix["agency_name"]] || "").trim());
@@ -412,6 +415,8 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
         line: L.number, operator: L.operator, dir: (L.name || "").trim(),
         rd: L._desc || "", type: it.type,
         from: it.from && it.from.name, to: it.to && it.to.name,
+        city: (() => { const a = it.from && it.from.city, b = it.to && it.to.city;
+          return a && b && a !== b ? a + " ↔ " + b : (a || b || ""); })(),
         lat: it.from && it.from.lat, lng: it.from && it.from.lng,
         ref: it.refNumber, excessKm,
         tripsDay, wasteDayKm: +(excessKm * tripsDay).toFixed(1),
