@@ -127,21 +127,23 @@ function findLoop(poly, thr, minArc) {
   return best;
 }
 
-// בורר את החלק(ים) ה*מיותר* בתוך מקטע-עיקוף — לא את כל המקטע מתחנה לתחנה. מסמן
-// נקודה כמיותרת אם היא מקיימת *אחד מהשניים* (איחוד): (1) בליטה צידית — רחוקה
-// מקו-הייחוס (>35 מ'); או (2) נסיגה/הלוך-חזור — היא חוזרת אחורה *לאורך קו-הייחוס*
-// (כפילות-כיסוי). מדידת-הנסיגה לאורך הירוק (ולא לפי ציר A→B ישר) חיונית: אם גם
-// הירוק עושה את אותה "עקיפה" (קו 36 בבאר שבע: שני הקווים עולים צפונה לצומת
-// וחוזרים *לפני* הקיבוץ), זו אינה נסיגה מיותרת — ההתקדמות-לאורך-הירוק נשארת
-// מונוטונית, ולכן אינה מסומנת. בלי קו-ייחוס נופלים לנסיגה לפי ציר A→B (גיבוי).
+// בורר את החלק(ים) ה*מיותר* בתוך מקטע-עיקוף — לא את כל המקטע מתחנה לתחנה.
+// שני מסמנים (איחוד): (1) בליטה צידית — נקודה רחוקה מקו-הייחוס (>35 מ');
+// (2) חטיבת-סטייה שלמה — מהנקודה שבה ההתקדמות *לאורך הירוק* עוזבת את חזית-
+// ההתקדמות ועד שהיא חוזרת אליה: כל ההלוך-חזור/לולאה מסומנים ברצף, כולל
+// נקודת-הפנייה והכיסוי-החוזר (ולא רק הנקודות שכבר צברו נסיגה >50 מ').
+// חטיבה נספרת רק אם היא אמיתית — נסיגה >50 מ' או בליטה >35 מ' בתוכה; לכן
+// כשגם הירוק עושה את אותה "עקיפה" (קו 36 בבאר שבע) אין נסיגה ואין סימון.
+// קצוות הרצף נחתכים בנקודת-החצייה המשוערת של סף ה-35 מ' (אינטרפולציה על
+// קו דליל) — כך הכתום לא נמתח מאות מטרים על דרך תקינה (קו 46 טירת הכרמל).
+// בלי קו-ייחוס נופלים לנסיגה לפי ציר A→B (גיבוי).
 // מחזיר מערך פוליגונים, או null כשאין חלק מובהק (אז הקורא מצייר את כל המקטע).
 function wastefulRuns(detourPoly, refG, from, to) {
   if (!detourPoly || detourPoly.length < 2) return null;
   const n = detourPoly.length;
   const mask = new Array(n).fill(false);
+  let perpArr = null;
   if (refG && refG.length > 1) {
-    // הצמדת כל נקודה לקו-הייחוס: perp = מרחק צידי (מ'), arc = אורך-קשת לאורך הירוק.
-    const havM = (a, b) => hav2(a, b) * 1000;
     const refCum = [0];
     for (let k = 1; k < refG.length; k++) refCum[k] = refCum[k - 1] + havM(refG[k - 1], refG[k]);
     const proj = (p) => {
@@ -156,15 +158,27 @@ function wastefulRuns(detourPoly, refG, from, to) {
       }
       return { perp: min, arc };
     };
-    let frontier = -Infinity;
-    for (let i = 0; i < n; i++) {
-      const pr = proj(detourPoly[i]);
-      if (pr.perp > 35) mask[i] = true;                       // (1) בליטה/חריגה מהירוק
-      if (pr.arc > frontier) frontier = pr.arc;
-      else if (pr.arc < frontier - 50) mask[i] = true;        // (2) נסיגה לאורך הירוק (>50 מ')
+    const perp = new Array(n), arc = new Array(n); perpArr = perp;
+    for (let i = 0; i < n; i++) { const pr = proj(detourPoly[i]); perp[i] = pr.perp; arc[i] = pr.arc; }
+    // (1) בליטה צידית — כמו היום
+    for (let i = 0; i < n; i++) if (perp[i] > 35) mask[i] = true;
+    // (2) חטיבת-סטייה: מרגע שההתקדמות לאורך הירוק יורדת מתחת לחזית (eps=15)
+    //     ועד שהיא חוזרת אליה — הכל מסומן, כולל נקודת-הפנייה והכיסוי-החוזר.
+    //     חטיבה נספרת רק אם היא אמיתית: נסיגה >50 מ' או בליטה >35 מ' בתוכה.
+    const EPS = 15, DEPTH = 50;
+    let frontier = -Infinity, frontierIdx = 0, i = 0;
+    while (i < n) {
+      if (arc[i] >= frontier) { frontier = arc[i]; frontierIdx = i; i++; continue; }
+      if (arc[i] >= frontier - EPS) { i++; continue; }
+      // נפתחה חטיבה: start = הנקודה שקבעה את החזית; end = חזרה אל (כמעט) החזית
+      let j = i, minArc = arc[i], maxPerp = perp[i];
+      while (j + 1 < n && arc[j + 1] < frontier - EPS) { j++; if (arc[j] < minArc) minArc = arc[j]; if (perp[j] > maxPerp) maxPerp = perp[j]; }
+      const end = Math.min(n - 1, j + 1); // הנקודה שחזרה אל החזית (או סוף הקו)
+      if (frontier - minArc > DEPTH || maxPerp > 35)
+        for (let k = frontierIdx; k <= end; k++) mask[k] = true;
+      i = j + 1;
     }
   } else if (from && to && n >= 4) {
-    // גיבוי ללא קו-ייחוס: נסיגה מתחת ל"חזית" על ציר A→B הישר
     const A = [from.lat, from.lng], B = [to.lat, to.lng];
     const ux = B[0] - A[0], uy = (B[1] - A[1]) * Math.cos(A[0] * Math.PI / 180);
     const uu = ux * ux + uy * uy || 1e-12;
@@ -173,23 +187,40 @@ function wastefulRuns(detourPoly, refG, from, to) {
     let frontier = -Infinity;
     for (let i = 0; i < n; i++) { const t = tOf(detourPoly[i]); if (t > frontier) frontier = t; else if (t < frontier - eps) mask[i] = true; }
   }
-  // חילוץ רצפים רציפים של "מיותר", הרחבה בנקודה לכל צד (חיבור חלק לרקע) + איחוד
-  const merged = [];
-  let i = 0;
-  while (i < n) {
-    if (!mask[i]) { i++; continue; }
-    let j = i; while (j + 1 < n && mask[j + 1]) j++;
-    const lo = Math.max(0, i - 1), hi = Math.min(n - 1, j + 1);
-    const last = merged[merged.length - 1];
-    if (last && lo <= last[1] + 1) last[1] = Math.max(last[1], hi);
-    else merged.push([lo, hi]);
-    i = j + 1;
+  // חילוץ רצפים + קיצוץ-קצה מדויק: במקום "נקודה אחת לכל צד" (שעל קו דליל
+  // מותחת את הכתום מאות מטרים), הקצה מוארך אל נקודת-החצייה המשוערת של סף
+  // ה-35 מ' לאורך הקפיצה אל הנקודה השכנה (אינטרפולציה לינארית של perp),
+  // ולפחות 25 מ' לחיבור חלק. כשאין perp (אין ייחוס) — 25 מ' בלבד.
+  const EXT = 25;
+  const runs = [];
+  let i2 = 0;
+  while (i2 < n) {
+    if (!mask[i2]) { i2++; continue; }
+    let j = i2; while (j + 1 < n && mask[j + 1]) j++;
+    const last = runs[runs.length - 1];
+    if (last && i2 <= last[1] + 1) last[1] = Math.max(last[1], j);
+    else runs.push([i2, j]);
+    i2 = j + 1;
   }
-  if (!merged.length) {
+  if (!runs.length) {
     const loop = findLoop(detourPoly, 0.045, 0.08);
     return loop ? [detourPoly.slice(loop.i, loop.j + 1)] : null;
   }
-  return merged.map((r) => detourPoly.slice(r[0], r[1] + 1));
+  const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  const extLen = (edge, nb, gap) => {
+    let e = Math.min(EXT, gap);
+    if (perpArr && perpArr[edge] > 35 && perpArr[nb] < perpArr[edge])
+      e = Math.max(e, gap * Math.min(1, (perpArr[edge] - 35) / (perpArr[edge] - perpArr[nb])));
+    return e;
+  };
+  return runs.map(([a, b]) => {
+    const pts = detourPoly.slice(a, b + 1);
+    if (a > 0) { const g = havM(detourPoly[a - 1], detourPoly[a]), e = extLen(a, a - 1, g);
+      pts.unshift(e >= g ? detourPoly[a - 1] : lerp(detourPoly[a], detourPoly[a - 1], e / g)); }
+    if (b < n - 1) { const g = havM(detourPoly[b], detourPoly[b + 1]), e = extLen(b, b + 1, g);
+      pts.push(e >= g ? detourPoly[b + 1] : lerp(detourPoly[b], detourPoly[b + 1], e / g)); }
+    return pts;
+  });
 }
 
 // גוזם את הקידומת והסיומת המשותפות בין polyA ל-polyB, ומחזיר את הרצף הרציף
