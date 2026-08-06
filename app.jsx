@@ -188,6 +188,20 @@ function wastefulRuns(detourPoly, refG, from, to) {
     let frontier = -Infinity;
     for (let i = 0; i < n; i++) { const t = tOf(detourPoly[i]); if (t > frontier) frontier = t; else if (t < frontier - eps) mask[i] = true; }
   }
+  // הרחבת-בליטה דו-ספית (קו 567): רצף שזוהה בסף החזק (>35 מ') מורחב על
+  // נקודות שכנות כל עוד הקו עדיין ≥20 מ' מהירוק — רחוב מקביל שנפתח ונסגר
+  // בהדרגה (זרועות פרסה ב-28–34 מ') נצבע במלואו. ההרחבה נקודתית בלבד:
+  // קפיצה דלילה עדיין נחתכת בחציית ה-35 (קו 46 נשאר קצר).
+  if (perpArr) {
+    const m2 = mask.slice();
+    for (let i = 0; i < n; i++) {
+      if (!mask[i]) continue;
+      for (let j = i - 1; j >= 0 && !mask[j] && perpArr[j] >= 20; j--) m2[j] = true;
+      for (let j = i + 1; j < n && !mask[j] && perpArr[j] >= 20; j++) m2[j] = true;
+    }
+    for (let i = 0; i < n; i++) mask[i] = m2[i];
+  }
+
   // חילוץ רצפים + קיצוץ-קצה מדויק: במקום "נקודה אחת לכל צד" (שעל קו דליל
   // מותחת את הכתום מאות מטרים), הקצה מוארך אל נקודת-החצייה המשוערת של סף
   // ה-35 מ' לאורך הקפיצה אל הנקודה השכנה (אינטרפולציה לינארית של perp),
