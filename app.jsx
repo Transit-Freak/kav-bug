@@ -140,6 +140,7 @@ function findLoop(poly, thr, minArc) {
 // מחזיר מערך פוליגונים, או null כשאין חלק מובהק (אז הקורא מצייר את כל המקטע).
 function wastefulRuns(detourPoly, refG, from, to) {
   if (!detourPoly || detourPoly.length < 2) return null;
+  const havM = (a, b) => hav2(a, b) * 1000;
   const n = detourPoly.length;
   const mask = new Array(n).fill(false);
   let perpArr = null;
