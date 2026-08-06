@@ -222,6 +222,30 @@ function wastefulRuns(detourPoly, refG, from, to) {
     return loop ? [detourPoly.slice(loop.i, loop.j + 1)] : null;
   }
   const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  // נקודת-חיתוך אמיתית עם קו-הייחוס (הצעת המשתמש): במקום קצה שרירותי,
+  // מחשבים איפה הקטע edge→שכן חוצה בפועל את הירוק ומייצרים שם קואורדינטה
+  // משלנו — הכתום נגמר בדיוק במפגש הכבישים. מוגבל ל-60 מ' מהקצה: חיתוך
+  // רחוק (קפיצה דלילה של מאות מטרים, קו 46) לא נלקח — שם עדיף קצה שמרני.
+  const refCross = (a, b) => {
+    if (!refG || refG.length < 2) return null;
+    const kx = 111320 * Math.cos(a[0] * Math.PI / 180), ky = 110570;
+    const ax = a[1] * kx, ay = a[0] * ky, bx = b[1] * kx, by = b[0] * ky;
+    const dx = bx - ax, dy = by - ay;
+    let best = null;
+    for (let j = 1; j < refG.length; j++) {
+      const cx = refG[j - 1][1] * kx, cy = refG[j - 1][0] * ky;
+      const ex = refG[j][1] * kx, ey = refG[j][0] * ky;
+      const fx = ex - cx, fy = ey - cy;
+      const den = dx * fy - dy * fx;
+      if (Math.abs(den) < 1e-9) continue;
+      const t = ((cx - ax) * fy - (cy - ay) * fx) / den;
+      const u = ((cx - ax) * dy - (cy - ay) * dx) / den;
+      if (t < 0 || t > 1 || u < 0 || u > 1) continue;
+      const dist = t * Math.hypot(dx, dy);
+      if (dist <= 60 && (!best || dist < best.dist)) best = { t, dist };
+    }
+    return best;
+  };
   const extLen = (edge, nb, gap) => {
     let e = Math.min(EXT, gap);
     if (perpArr && perpArr[edge] > 35 && perpArr[nb] < perpArr[edge])
@@ -230,10 +254,18 @@ function wastefulRuns(detourPoly, refG, from, to) {
   };
   return runs.map(([a, b]) => {
     const pts = detourPoly.slice(a, b + 1);
-    if (a > 0) { const g = havM(detourPoly[a - 1], detourPoly[a]), e = extLen(a, a - 1, g);
-      pts.unshift(e >= g ? detourPoly[a - 1] : lerp(detourPoly[a], detourPoly[a - 1], e / g)); }
-    if (b < n - 1) { const g = havM(detourPoly[b], detourPoly[b + 1]), e = extLen(b, b + 1, g);
-      pts.push(e >= g ? detourPoly[b + 1] : lerp(detourPoly[b], detourPoly[b + 1], e / g)); }
+    if (a > 0) {
+      const x = refCross(detourPoly[a], detourPoly[a - 1]);
+      if (x) pts.unshift(lerp(detourPoly[a], detourPoly[a - 1], x.t));
+      else { const g = havM(detourPoly[a - 1], detourPoly[a]), e = extLen(a, a - 1, g);
+        pts.unshift(e >= g ? detourPoly[a - 1] : lerp(detourPoly[a], detourPoly[a - 1], e / g)); }
+    }
+    if (b < n - 1) {
+      const x = refCross(detourPoly[b], detourPoly[b + 1]);
+      if (x) pts.push(lerp(detourPoly[b], detourPoly[b + 1], x.t));
+      else { const g = havM(detourPoly[b], detourPoly[b + 1]), e = extLen(b, b + 1, g);
+        pts.push(e >= g ? detourPoly[b + 1] : lerp(detourPoly[b], detourPoly[b + 1], e / g)); }
+    }
     return pts;
   });
 }
