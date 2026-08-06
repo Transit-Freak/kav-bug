@@ -1,84 +1,44 @@
-name: סריקה יומית (כל הארץ)
+name: סנכרון מהסריקה המאוחדת
 
-# מוריד את ה-GTFS הארצי (עם retry — השרת של משרד התחבורה נופל לפעמים) ומריץ
-# את scan-country.js (עיקופי אוטובוסים, "כל הארץ"). מעדכן history.json
-# (מגמות) ודוחף הכל בקומיט אחד. רץ אוטומטית כל לילה + הפעלה ידנית
-# (בקשת משתמש: קובץ ה-GTFS מתחדש יומית — אין סיבה לחכות שבוע).
-#
-# הערה: בעבר הכלי כלל גם השוואת-רכבות מול ה-API של רכבת ישראל (rail-gaps.js).
-# רכבת ישראל התבקשה לאשר את השימוש ב-API הציבורי שלה וסירבה, ולכן ההשוואה
-# הוסרה מכאן לחלוטין — אין יותר שום קריאה ל-API של רכבת ישראל, אוטומטית או
-# ידנית. פרטים בדף rail.html.
+# הסריקה עצמה רצה בצינור היומי האחד של "הקו הבוחן" (10:30 ישראל) על אותו
+# GTFS של כל האתרים; כאן רק מושכים את התוצאות המוכנות (kavbug-data/) —
+# האתר נשאר באותה כתובת בדיוק, בלי סריקה כפולה ובלי הורדת GTFS נוספת.
+# קוד הזיהוי (data.js / scan-country.js) ממשיך לחיות כאן — הצינור מושך
+# אותו מכאן בזמן ריצה.
 on:
   schedule:
-    # מיושר לצינור היומי של "הקו בזמן" (07:30 UTC — אחרי חלון הפרסום של
-    # משרד התחבורה): אותו קובץ, אותו בוקר, אחד אחרי השני — כמו צינור אחד
-    - cron: "0 8 * * *"   # 08:00 UTC (11:00 ישראל בקיץ)
+    - cron: "45 8 * * *"   # 11:45 ישראל בקיץ — אחרי שהצינור המאוחד מסיים
   workflow_dispatch: {}
   push:
-    branches: [scan-go]   # ענף-הצתה להרצה ידנית מיידית
-
+    branches: [scan-go]    # הצתה ידנית מיידית — נשארת
 permissions:
   contents: write
-
 concurrency:
   group: weekly-scan
   cancel-in-progress: false
-
 jobs:
-  scan:
+  sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: התקנת תלות (fflate)
-        run: npm install fflate --no-save
-
-      - name: הורדת ה-GTFS הארצי (משרד התחבורה, עם גיבוי מארכיון האוטובוס הפתוח)
+      - name: משיכת תוצאות הסריקה מהקו הבוחן
         run: |
-          # השרת של משרד התחבורה נופל/חוסם לפעמים — אותו קובץ בדיוק מועלה כל
-          # בוקר לארכיון הציבורי של האוטובוס הפתוח (S3), שיציב בהרבה.
-          if ! curl -sSL --retry 3 --retry-delay 10 --retry-all-errors --max-time 600 \
-              -o israel-gtfs.zip \
-              https://gtfs.mot.gov.il/gtfsfiles/israel-public-transportation.zip; then
-            echo "משרד התחבורה לא זמין — עובר לארכיון האוטובוס הפתוח"
-            for D in "$(date -u +%Y/%m/%d)" "$(date -u -d yesterday +%Y/%m/%d)"; do
-              echo "מנסה את קובץ ${D}…"
-              if curl -sSL --retry 3 --retry-delay 10 --retry-all-errors --max-time 900 \
-                  -o israel-gtfs.zip \
-                  "https://openbus-stride-public.s3.eu-west-1.amazonaws.com/gtfs_archive/${D}/israel-public-transportation.zip"; then
-                break
-              fi
-            done
-          fi
-          ls -lh israel-gtfs.zip
-          # ודא שזה באמת ZIP ולא דף שגיאה
-          head -c 2 israel-gtfs.zip | grep -q PK
-
-      - name: סריקת כל הארץ (עיקופי אוטובוסים)
-        run: node --max-old-space-size=6144 scan-country.js israel-gtfs.zip country-scan
-
-      - name: עדכון היסטוריית-מגמות (history.json)
-        run: node update-history.js country-scan.json history.json
-
-      - name: ניקוי קובץ ה-GTFS הגדול (לא נשמר בריפו)
-        run: rm -f israel-gtfs.zip
-
-      - name: עדכון הריפו (רק אם השתנה)
-        run: |
-          git config user.name "kavbug-bot"
-          git config user.email "kavbug-bot@users.noreply.github.com"
+          set -e
+          BASE=https://raw.githubusercontent.com/Transit-Freak/kav-bochan/main/kavbug-data
+          for f in country-scan.json country-scan.csv history.json; do
+            curl -fsSL "$BASE/$f" -o "$f.new"
+          done
+          # ולידציה לפני החלפה — לא מחליפים קבצים חיים בתוכן שבור
+          python3 -c "import json; json.load(open('country-scan.json.new')); json.load(open('history.json.new'))"
+          for f in country-scan.json country-scan.csv history.json; do mv "$f.new" "$f"; done
+          git config user.name kavbug-bot
+          git config user.email kavbug-bot@users.noreply.github.com
           git add country-scan.json country-scan.csv history.json
           if git diff --staged --quiet; then
-            echo "אין שינוי — לא מבצע commit."
+            echo "אין שינוי — הסריקה המאוחדת טרם עדכנה"
           else
-            git commit -m "סריקה יומית: כל הארץ ($(date -u +%Y-%m-%d))"
-            # תמיד ל-main — גם כשהריצה הוצתה מענף scan-go. אם main זז בזמן
-            # הסריקה (מיזוג PR) — מיישרים לפניו; קובצי התוצאה לא מתנגשים בקוד.
+            git commit -m "סנכרון מהסריקה המאוחדת ($(date -u +%Y-%m-%d))"
             git fetch origin main
             git rebase origin/main
             git push origin HEAD:main
