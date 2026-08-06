@@ -538,6 +538,18 @@ function KavBug() {
         L.polyline(offsetRight(run, 5), { color: DETOUR, weight: 9, opacity: 1, lineCap: "round", lineJoin: "round" })
           .addTo(grp).bindTooltip(`החלק המיותר · ${fmt(issue.excessKm)} ק"מ`, { className: "seg-tip", sticky: true });
       });
+    
+      // שמות תחנות-הקצה של המקטע השגוי — גלויים תמיד בלחיצה (בקשת המשתמש):
+      // בלי זה צריך לרחף על כל נקודה כדי להבין איפה התקלה מתחילה ונגמרת.
+      [[seg[0], issue.from], [seg[seg.length - 1], issue.to]].forEach(([pnt, nm]) => {
+        if (!pnt || !nm) return;
+        L.circleMarker(pnt, { radius: 5.5, color: "#0f172a", fillColor: "#fff", fillOpacity: 1, weight: 2.5 }).addTo(grp);
+        L.marker(pnt, {
+          interactive: false, keyboard: false,
+          icon: L.divIcon({ className: "stop-pin", iconSize: [0, 0], iconAnchor: [0, 0],
+            html: `<div class="stop-name fault-stop">${nm}</div>` }),
+        }).addTo(grp);
+      });
     }
     // קו-ההשוואה (ירוק) — *המסלול המלא* של קו-הייחוס בין שתי תחנות-הקצה: זו הדרך
     // הקצרה שהקו הנבדק *היה יכול* לנסוע. מציגים אותו במלואו (לא חתוך) כדי שרואים
@@ -709,6 +721,20 @@ function KavBug() {
     // תיאור התמרון (ימינה/שמאלה + מטרים) מתוך גאומטריית המסלול
     const maneuver = describeManeuver(detourPoly);
     const manHtml = maneuver ? `<br><span class="man">↪ ${maneuver}</span>` : "";
+    // שמות תחנות-הקצה של התקלה — גלויים תמיד כשקו נבחר (בקשת המשתמש)
+    if (line.worst) {
+      [line.worst.from, line.worst.to].forEach((st) => {
+        if (!st) return;
+        const sp = (line.stops || []).find((s) => String(s.id) === String(st.id)) ||
+                   (line.stops || []).find((s) => s.name === st.name);
+        if (!sp) return;
+        L.marker([sp.lat, sp.lng], {
+          interactive: false, keyboard: false,
+          icon: L.divIcon({ className: "stop-pin", iconSize: [0, 0], iconAnchor: [0, 0],
+            html: `<div class="stop-name fault-stop">${sp.name}</div>` }),
+        }).addTo(grp);
+      });
+    }
     detourRuns.forEach((seg) => {
       if (!seg || seg.length < 2) return;
       if (!labelMid) labelMid = seg[Math.floor(seg.length / 2)];
