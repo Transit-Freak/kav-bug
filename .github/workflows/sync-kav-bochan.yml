@@ -21,8 +21,12 @@ on:
       - "styles.css"
       - "rail.html"
       - "kavbug/**"
+      - "vendor/**"
       - "country-scan.json"
       - "country-scan.csv"
+      - "country-scan-lite.json"
+      - "country-geo.json"
+      - "history.json"
       - "rail-gaps.json"
       - "rail-gaps.csv"
   workflow_dispatch: {}
@@ -56,8 +60,12 @@ jobs:
           cp kav-bug/index.html kav-bug/data.js kav-bug/components.jsx kav-bug/app.jsx \
              kav-bug/styles.css kav-bug/rail.html \
              kav-bug/country-scan.json kav-bug/country-scan.csv \
+             kav-bug/country-scan-lite.json kav-bug/country-geo.json kav-bug/history.json \
              kav-bug/rail-gaps.json kav-bug/rail-gaps.csv \
              kav-bochan/kavbug/
+          mkdir -p kav-bochan/kavbug/vendor
+          cp kav-bug/vendor/react.production.min.js kav-bug/vendor/react-dom.production.min.js \
+             kav-bochan/kavbug/vendor/
           cp kav-bug/kavbug/gtfs-worker.js kav-bochan/kavbug/kavbug/
 
       - name: עדכון הריפו kav-bochan (רק אם השתנה)

@@ -32,9 +32,12 @@ jobs:
           # ולידציה לפני החלפה — לא מחליפים קבצים חיים בתוכן שבור
           python3 -c "import json; json.load(open('country-scan.json.new')); json.load(open('history.json.new'))"
           for f in country-scan.json country-scan.csv history.json; do mv "$f.new" "$f"; done
+          # הפיצול לדפדפן (lite + geo) נגזר מקומית מהקובץ שנמשך, כך ששלושת
+          # הקבצים תמיד עקביים — בלי תלות במה שהצינור המרוחק הספיק לכתוב
+          node split-geo.js country-scan.json
           git config user.name kavbug-bot
           git config user.email kavbug-bot@users.noreply.github.com
-          git add country-scan.json country-scan.csv history.json
+          git add country-scan.json country-scan.csv history.json country-scan-lite.json country-geo.json
           if git diff --staged --quiet; then
             echo "אין שינוי — הסריקה המאוחדת טרם עדכנה"
           else

@@ -4,14 +4,15 @@ function fmt(n, d = 1) {
   return Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
-// מועד ה-Action השבועי הבא (yaml: cron "0 3 * * 0" = יום ראשון 03:00 UTC).
-// מחושב ב-UTC כדי להתאים בדיוק ל-cron, ומוצג בזמן-המקומי של המבקר (toLocaleString
-// ממיר לבד) — כדי שלא יתבלבלו למה הדוח "לא התעדכן" כשעוד לא הגיע הזמן.
-function nextWeeklyRun(from) {   // מאז 4.9 הסריקה יומית — השם נשמר לתאימות
+// מועד הסריקה היומית הבאה. הסריקה רצה בתוך line-history.yml של ריפו
+// kav-bochan (cron '30 7 * * *' = 07:30 UTC), והתוצאות מסתנכרנות לכאן
+// זמן קצר אחרי. מחושב ב-UTC ומוצג בזמן-המקומי של המבקר. ההערה הקודמת
+// ציינה 03:00 והחישוב 08:00 — המשתמש ראה מועד שלא תואם שום דבר אמיתי.
+function nextWeeklyRun(from) {   // השם ההיסטורי נשמר; הסריקה יומית
   const d = from ? new Date(from) : new Date();
-  const todayAtRunTime = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 8, 0, 0);
+  const todayAtRunTime = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 7, 30, 0);
   const addDays = d.getTime() >= todayAtRunTime ? 1 : 0;
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + addDays, 8, 0, 0));
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + addDays, 7, 30, 0));
 }
 
 const SEV_LABEL = { high: "חמור", medium: "בינוני", low: "קל", ok: "תקין" };
@@ -370,7 +371,9 @@ function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onRepo
     return () => document.removeEventListener("mousedown", h);
   }, []);
   const q = query.trim();
-  const matches = cityNames.filter((c) => c.includes(q));
+  // אותו נירמול כמו בחיפוש הראשי: גרשיים עבריים ורווחים כפולים
+  const nrm = (t) => String(t || "").replace(/[\u05F3']/g, "'").replace(/[\u05F4"]/g, '"').replace(/\s+/g, " ");
+  const matches = cityNames.filter((c) => nrm(c).includes(nrm(q)));
   return (
     <header className="topbar">
       <div className="brand">
@@ -582,10 +585,43 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
       .then((r) => { setCity({ name, bbox: r.bbox }); setCityGeo({ status: "idle" }); })
       .catch(() => setCityGeo({ status: "error" }));
   }, []);
+  // גאומטריות — מובאות פעם אחת, בפעם הראשונה שמבקשים מפה
+  const geoRef = React.useRef(null);
+  const withGeo = React.useCallback(async (i) => {
+    if (i._g == null) return i;                      // קובץ מלא — הכול כבר בפנים
+    if (!geoRef.current) {
+      geoRef.current = fetch("country-geo.json?v=" + (window.KAVBUG_BUILD || ""))
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => []);
+    }
+    const geo = await geoRef.current;
+    return { ...i, ...(geo[i._g] || {}) };
+  }, []);
+  // קישור עמוק: נקרא פעם אחת אחרי שהנתונים נטענו
+  const deepDone = React.useRef(false);
+  React.useEffect(() => {
+    if (deepDone.current || !data) return;
+    deepDone.current = true;
+    const h = decodeURIComponent((window.location.hash || "").slice(1));
+    let m = h.match(/^עיר\/(.+)$/);
+    if (m) { setCityText(m[1]); lookupCity(m[1]); return; }
+    m = h.match(/^עיקוף\/(.+)$/);
+    if (m) {
+      const [ln, op, from, to] = m[1].split("~").map((x) => { try { return decodeURIComponent(x); } catch (e) { return x; } });
+      const hit = ((data && data.issues) || []).find((i) => String(i.line) === ln && i.operator === op && i.from === from && i.to === to);
+      const hg = hit && (hit.hasGeo != null ? hit.hasGeo : ((hit.seg && hit.seg.length > 1) || (hit.refGeom && hit.refGeom.length > 1)));
+      if (hit) { setQ(ln); if (onPick && hg) withGeo(hit).then(onPick); }
+    }
+  }, [data, onPick, lookupCity, withGeo]);
   React.useEffect(() => {
     if ((!open && !inline) || data || err) return;
-    fetch("country-scan.json?v=" + (window.KAVBUG_BUILD || ""))
-      .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    // קודם הקובץ הרזה (~100KB — טבלה בלי גאומטריות); אם עוד לא קיים
+    // בסנכרון, נסיגה לקובץ המלא. הגאומטריה נטענת בנפרד רק כשפותחים מפה.
+    const v = "?v=" + (window.KAVBUG_BUILD || "");
+    fetch("country-scan-lite.json" + v)
+      .then((r) => { if (!r.ok) throw new Error("no-lite"); return r.json(); })
+      .catch(() => fetch("country-scan.json" + v)
+        .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }))
       .then(setData)
       .catch((e) => setErr(e.message || String(e)));
   }, [open, inline, data, err]);
@@ -603,7 +639,6 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
     if (typeof initialCity === "string" && initialCity) { setCityText(initialCity); lookupCity(initialCity); }
     else if (initialCity === null) { setCity(null); setCityText(""); setCityGeo({ status: "idle" }); }
   }, [open, inline, initialCity, lookupCity]);
-  if (!open && !inline) return null;
   const issues = React.useMemo(() => {
     const seen = new Set(); const out = [];
     for (const i of (data && data.issues) || []) {
@@ -613,13 +648,19 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
     }
     return out;
   }, [data]);
-  const qn = q.trim();
+  // ה-return המותנה חייב לבוא אחרי כל קריאות ה-hooks — כשהוא היה לפני
+  // ה-useMemo, מספר ה-hooks השתנה בין רינדורים וזו קריסה שמחכה לקרות
+  if (!open && !inline) return null;
+  // נירמול: גרש עברי (׳) וגרש מקלדת (') זהים, וכך גם גרשיים (״/"),
+  // ורווחים כפולים מתכווצים — בלי זה "בית ש'ן" לא מצא את "בית ש׳ן"
+  const norm = (t) => String(t || "").replace(/[׳']/g, "'").replace(/[״"]/g, '"').replace(/\s+/g, " ").toLowerCase();
+  const qn = norm(q.trim());
   const bb = city && city.bbox;
   const inCity = (i) => !bb || (i.lat != null && i.lat >= bb[0] && i.lat <= bb[2] && i.lng >= bb[1] && i.lng <= bb[3]);
   const cityIssues = issues.filter(inCity);
   const shown = cityIssues.filter((i) =>
     (filter === "הכל" || dispVerdict(i) === filter) &&
-    (!qn || ((i.line || "") + " " + (i.operator || "") + " " + (i.from || "") + " " + (i.to || "") + " " + (i.dir || "") + " " + (i.rd || "")).includes(qn))
+    (!qn || norm((i.line || "") + " " + (i.operator || "") + " " + (i.from || "") + " " + (i.to || "") + " " + (i.dir || "") + " " + (i.rd || "")).includes(qn))
   ).sort((a, b) => sort === "excess" ? (b.excessKm - a.excessKm) : ((b.wasteDayKm || 0) - (a.wasteDayKm || 0)));
   const count = (v) => v === "הכל" ? cityIssues.length : cityIssues.filter((i) => dispVerdict(i) === v).length;
   const cityReal = cityIssues.filter((i) => dispVerdict(i) === "אמיתי").length;
@@ -632,6 +673,26 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
     return { last, prev, dReal: last.realCount - prev.realCount, dWaste: Math.round((last.totalWasteDayKm || 0) - (prev.totalWasteDayKm || 0)) };
   })() : null;
   const trendArrow = (d) => d > 0 ? "▲" : d < 0 ? "▼" : "–";
+  // גרף מגמה: history.json צובר נקודה ליום, וה-UI הציג רק הפרש בין שתי
+  // הריצות האחרונות. "כמה ק"מ מבוזבזים בארץ, ומה הכיוון" הוא הנתון החזק
+  // ביותר שיש כאן — SVG ידני, בלי ספרייה, בהתאם לגישת ה-no-build של האתר.
+  const spark = (!city && history && history.length >= 3) ? (() => {
+    const pts = history.filter((h) => h && h.totalWasteDayKm != null).slice(-60);
+    if (pts.length < 3) return null;
+    const vals = pts.map((h) => h.totalWasteDayKm);
+    const min = Math.min(...vals), max = Math.max(...vals), rng = (max - min) || 1;
+    const W = 280, H = 44;
+    const xy = vals.map((v, i) => [
+      (i / (vals.length - 1)) * W,
+      H - 4 - ((v - min) / rng) * (H - 10),
+    ]);
+    return {
+      d: xy.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" "),
+      area: "M0 " + H + " " + xy.map((p) => "L" + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ") + " L" + W + " " + H + " Z",
+      last: xy[xy.length - 1], W, H, min, max,
+      from: pts[0].date, to: pts[pts.length - 1].date, n: pts.length,
+    };
+  })() : null;
   const content = (
     <>
         <div className="country-city">
@@ -660,6 +721,21 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
             <p className="modal-hint next-run">
               🕐 העדכון האוטומטי הבא: {nextWeeklyRun().toLocaleString("he-IL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
             </p>
+            {spark && (
+              <div className="kb-spark" style={{ margin: "6px 0 10px" }}>
+                <svg width={spark.W} height={spark.H} viewBox={"0 0 " + spark.W + " " + spark.H}
+                  role="img" aria-label={"מגמת הק\"מ המבוזבזים ביום עמוס לאורך " + spark.n + " מדידות"}
+                  style={{ maxWidth: "100%", overflow: "visible" }}>
+                  <path d={spark.area} fill="rgba(239,138,23,.14)" />
+                  <path d={spark.d} fill="none" stroke="#ef8a17" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+                  <circle cx={spark.last[0]} cy={spark.last[1]} r="3.5" fill="#ef8a17" />
+                </svg>
+                <div className="modal-hint" style={{ margin: 0 }}>
+                  מגמת הק&quot;מ המבוזבזים ביום עמוס · {spark.n} מדידות מ-{new Date(spark.from).toLocaleDateString("he-IL")} ·
+                  טווח {Math.round(spark.min).toLocaleString("he-IL")}–{Math.round(spark.max).toLocaleString("he-IL")} ק&quot;מ
+                </div>
+              </div>
+            )}
             {trend && (trend.dReal !== 0 || trend.dWaste !== 0) && (
               <p className="trend-line">
                 מאז הריצה הקודמת ({new Date(trend.prev.date).toLocaleDateString("he-IL")}):{" "}
@@ -685,13 +761,21 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
             </div>
             <div className="country-table">
               <table>
-                <thead><tr><th>קו</th><th>מפעיל</th><th>מקטע</th><th>מיותר</th><th>מבזבז/יום</th><th>מול</th><th>הכרעה</th><th></th></tr></thead>
+                <thead><tr>
+                  <th scope="col">קו</th><th scope="col">מפעיל</th><th scope="col">מקטע</th>
+                  <th scope="col" aria-sort={sort === "excess" ? "descending" : "none"}>מיותר</th>
+                  <th scope="col" aria-sort={sort === "waste" ? "descending" : "none"}>מבזבז/יום</th>
+                  <th scope="col">מול</th><th scope="col">הכרעה</th><th scope="col"><span className="sr-only">פעולות</span></th>
+                </tr></thead>
                 <tbody>
                   {shown.map((i, k) => {
-                    const hasGeo = (i.seg && i.seg.length > 1) || (i.refGeom && i.refGeom.length > 1);
+                    const hasGeo = i.hasGeo != null ? i.hasGeo : ((i.seg && i.seg.length > 1) || (i.refGeom && i.refGeom.length > 1));
                     return (
                       <tr key={k} className={onPick && hasGeo ? "clickable" : ""}
-                        onClick={onPick && hasGeo ? () => onPick(i) : undefined}
+                        onClick={onPick && hasGeo ? () => { withGeo(i).then(onPick); } : undefined}
+                        tabIndex={onPick && hasGeo ? 0 : undefined}
+                        onKeyDown={onPick && hasGeo ? ((e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); withGeo(i).then(onPick); } }) : undefined}
+                        aria-label={onPick && hasGeo ? ("הצגת קו " + i.line + " " + i.from + " עד " + i.to + " על המפה") : undefined}
                         title={onPick && hasGeo ? "הצג על המפה" : ""}>
                         <td className="num">{i.line}{i.rd ? <div className="line-mkt" title="מק״ט — מספר הרישוי של הקו במשרד התחבורה">{String(i.rd).split("-")[0].replace(/^0+/, "")}</div> : null}</td>
                         <td>{i.operator}</td>
@@ -706,7 +790,16 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
                           </span>
                         </td>
                         <td className="report-cell">
-                          <button className="report-flag" title="דיווח על הקו הזה" onClick={(e) => { e.stopPropagation(); setReportIssue(i); }}>🚩</button>
+                          <button className="report-flag" title="דיווח על הקו הזה" aria-label={"דיווח על קו " + i.line} onClick={(e) => { e.stopPropagation(); setReportIssue(i); }}>🚩</button>
+                          <button className="report-flag" title="העתקת קישור ישיר לעיקוף הזה" aria-label={"שיתוף העיקוף של קו " + i.line}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const key = [i.line, i.operator, i.from, i.to].map(encodeURIComponent).join("~");
+                              const url = window.location.origin + window.location.pathname + "#עיקוף/" + key;
+                              try { navigator.share ? navigator.share({ title: "קו באג — קו " + i.line, url }) : navigator.clipboard.writeText(url); } catch (err) { /* ignore */ }
+                              const b = e.currentTarget; const t = b.textContent; b.textContent = "✓";
+                              setTimeout(() => { b.textContent = t; }, 1200);
+                            }}>🔗</button>
                         </td>
                       </tr>
                     );

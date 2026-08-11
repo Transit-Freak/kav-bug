@@ -46,10 +46,18 @@ global.React = window.React = React;
 global.ReactDOM = window.ReactDOM = ReactDOM;
 
 // ---------- 3) fetch מזויף ----------
+// האתר טוען את הקובץ הרזה (lite) ואת הגאומטריה בנפרד; הקובץ המלא נשאר
+// כנסיגה. שלושתם מוגשים כאן מהעותקים שבריפו (split-geo.js שומר על עקביות).
 const report = JSON.parse(fs.readFileSync(path.join(ROOT, "country-scan.json"), "utf8"));
+const lite = JSON.parse(fs.readFileSync(path.join(ROOT, "country-scan-lite.json"), "utf8"));
+const geo = JSON.parse(fs.readFileSync(path.join(ROOT, "country-geo.json"), "utf8"));
 const fetchLog = [];
 const fakeFetch = async (url, opts) => {
   fetchLog.push(String(url));
+  if (String(url).includes("country-scan-lite.json"))
+    return { ok: true, status: 200, json: async () => lite };
+  if (String(url).includes("country-geo.json"))
+    return { ok: true, status: 200, json: async () => geo };
   if (String(url).includes("country-scan.json"))
     return { ok: true, status: 200, json: async () => report };
   if (String(url).includes("history.json"))
@@ -237,7 +245,7 @@ async function mount(element) {
   }
 
   // ---------- סיכום ----------
-  console.log("\nfetch שנקראו:", fetchLog.filter((u) => u.includes("country-scan")).length, "× country-scan.json");
+  console.log("\nfetch שנקראו:", fetchLog.filter((u) => u.includes("country-")).length, "× קבצי הסריקה");
   if (failures) { console.log("\n✗ " + failures + " בדיקות נכשלו"); process.exit(1); }
   console.log("\n✓ כל בדיקות-ה-mount עברו");
   process.exit(0);

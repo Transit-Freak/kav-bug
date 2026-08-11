@@ -504,6 +504,25 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
   };
   fs.writeFileSync(outPrefix + ".json", JSON.stringify(report, null, 2));
 
+  // פיצול לטובת הדפדפן: הקובץ המלא מחזיק גאומטריות לכל 222 הרשומות
+  // (~3.5MB), בעוד שהטבלה צריכה רק את השדות הטבלאיים (~100KB). הקובץ
+  // הרזה נטען מיד, והגאומטריה (country-geo.json) רק כשפותחים מפה.
+  const GEO_FIELDS = ["seg", "refGeom", "lineShape", "optRoute", "optSteps"];
+  const liteIssues = issues.map((i, idx) => {
+    const o = { _g: idx };   // מפתח הגאומטריה בקובץ הנלווה
+    for (const k of Object.keys(i)) if (!GEO_FIELDS.includes(k)) o[k] = i[k];
+    o.hasGeo = !!((i.seg && i.seg.length > 1) || (i.refGeom && i.refGeom.length > 1));
+    return o;
+  });
+  fs.writeFileSync(outPrefix + "-lite.json",
+    JSON.stringify({ ...report, issues: liteIssues }));
+  const geo = issues.map((i) => {
+    const g = {};
+    for (const k of GEO_FIELDS) if (i[k] != null) g[k] = i[k];
+    return g;
+  });
+  fs.writeFileSync(outPrefix.replace(/country-scan$/, "country-geo") + ".json", JSON.stringify(geo));
+
   const esc = (s) => '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"';
   const header = ["verdict", "line", "operator", "type", "from", "to", "ref", "excessKm", "tripsDay", "wasteDayKm", "ratio", "lat", "lng", "reason"];
   const csv = [header.join(",")].concat(
@@ -520,5 +539,5 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
   console.error("עיקופים *אמיתיים*:", real.length);
   console.error('ק"מ מבוזבזים ביום עמוס (אמיתיים):', totalWasteDayKm.toLocaleString("en-US"));
   console.error("זמן כולל:", secs(tnow() - t0));
-  console.error("נכתב: " + outPrefix + ".json , " + outPrefix + ".csv");
+  console.error("נכתב: " + outPrefix + ".json + -lite.json + country-geo.json , " + outPrefix + ".csv");
 })();
