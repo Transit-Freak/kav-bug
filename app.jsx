@@ -24,16 +24,19 @@ function offsetRight(poly, meters) {
 }
 
 // סוגי מפה (רקע). בסיסי = נקי ואפור (הקווים בולטים); מפורט = OSM עם שמות בעברית בכל הזומים.
+// שניהם מאריחי OpenStreetMap: "בסיסי" הוא אותם אריחים בגוני אפור דרך CSS (.tiles-clean ב-styles.css).
+// עד 17.09.2026 "בסיסי" הגיע מ-CARTO, שדורשים מפתח מסוף אוגוסט 2026 והחזירו אריחי "API KEY REQUIRED"
+// (דיווח של רם אגמון).
 const BASEMAPS = {
   clean: {
     label: "בסיסי",
-    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-    opts: { maxZoom: 19, subdomains: "abcd" },
+    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    opts: { maxZoom: 19, className: "tiles-clean", attribution: "© OpenStreetMap" },
   },
   detailed: {
     label: "מפורט",
     url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    opts: { maxZoom: 19 },
+    opts: { maxZoom: 19, attribution: "© OpenStreetMap" },
   },
 };
 
@@ -525,8 +528,9 @@ function KavBug() {
   // אתחול מפה
   React.useEffect(() => {
     const map = L.map(mapEl.current, {
-      zoomControl: false, attributionControl: false, preferCanvas: true,
+      zoomControl: false, attributionControl: true, preferCanvas: true,
     }).setView([31.252, 34.805], 12);
+    map.attributionControl.setPrefix(false);   // רק "© OpenStreetMap" — תנאי השימוש של אריחי OSM דורשים קרדיט
     L.control.zoom({ position: "bottomleft" }).addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
     countryLayerRef.current = L.layerGroup().addTo(map); // שכבה נפרדת לבחירה מ"כל הארץ"
