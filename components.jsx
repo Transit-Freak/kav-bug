@@ -385,8 +385,8 @@ function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onRepo
           </svg>
         </a>
         <div>
-          <h1>קו באג <span className="beta">בטא</span> <span className="ver">v{KAVBUG_VERSION}</span></h1>
-          <p className="tag">איתור קטעים מיותרים בקווי תחבורה · כלי בבדיקה — אמתו כל התראה על המפה</p>
+          <h1>קו באג</h1>
+          <p className="tag">איתור קטעים מיותרים בקווי תחבורה</p>
         </div>
       </div>
       <div className="spacer"></div>
@@ -1054,7 +1054,7 @@ function InfoModal({ open, onClose }) {
           <button className="x" onClick={onClose}>×</button>
         </div>
         <p className="modal-note">
-          המערכת סורקת את כל קווי התחבורה בעיר, משווה כל קו לשכניו, ומאתרת קטעים שבהם הקו נוסע דרך ארוכה מהנדרש:
+          המערכת סורקת כל יום את כל קווי האוטובוס בארץ ומאתרת קטעים שבהם קו נוסע דרך ארוכה מהנדרש — בשתי שיטות, כל אחת בלשונית משלה:
         </p>
         <div className="how">
           <div className="how-row">
@@ -1079,21 +1079,28 @@ function InfoModal({ open, onClose }) {
             </div>
           </div>
           <div className="how-row">
+            <span className="how-dot detour"></span>
+            <div>
+              <b>4 · השוואה לניווט באוטובוס</b>
+              <p>כל מקטע בין שתי תחנות עוקבות, בכל הקווים, מושווה לדרך הקצרה ביותר באוטובוס לפי מפת OpenStreetMap: מאותו כביש ובאותו כיוון נסיעה, בלי פרסות, בלי דרכים לא סלולות, עם נתיבי תח"צ ובלי כבישים שסגורים לאוטובוסים. מקטע ארוך פי 1.3 לפחות ובעודף של 200 מ' לפחות מופיע בלשונית "השוואה לניווט ברכב" — לבדיקה, כי לפעמים ההסבר הוא כביש חסום שהמפה לא מכירה.</p>
+            </div>
+          </div>
+          <div className="how-row">
             <span className="how-dot ok"></span>
             <div>
-              <b>4 · סינון התראות-שווא</b>
+              <b>5 · סינון התראות-שווא</b>
               <p>לפני שקטע מסומן, סדרת שערים גאומטריים מסננת מצבים שנראים כעיקוף אך אינם: תמרון-יציאה ממסוף, היפוך בתחנת-קצה, אשכולות תחנות צפופים, ושגיאות-דיגיטציה בנתונים. כך מצמצמים התראות-שווא.</p>
             </div>
           </div>
           <div className="how-row">
             <span className="how-dot ai"></span>
             <div>
-              <b>5 · אימות (AI / אבחון מהיר)</b>
+              <b>6 · אימות (AI / אבחון מהיר)</b>
               <p>כל קטע חשוד מקבל הכרעה — <b>אמיתי</b> או <b>ספק</b>. כשמודל ה-AI זמין הוא מנתח את הקואורדינטות ומנמק (🤖 ניתוח AI); אחרת חישוב-חוקים דטרמיניסטי מכריע (⚡ אבחון מהיר). בכל מקרה החלטות-הברזל הגאומטריות שומרות על הדיוק.</p>
             </div>
           </div>
         </div>
-        <p className="modal-hint">⚠️ גרסת בטא — כלי עזר לחקירה. מומלץ לאמת כל התראה על המפה לפני הסקת מסקנות. המסלול והמרחקים נלקחים מ-shapes.txt של משרד התחבורה (בערי הדמו — לפי מיקום התחנות).</p>
+        <p className="modal-hint">מומלץ לאמת כל התראה על המפה לפני הסקת מסקנות. המסלול והמרחקים נלקחים מ-shapes.txt של משרד התחבורה; מפת הניווט — © OpenStreetMap.</p>
         <p className="modal-credit">
           נוצר על ידי <b>שלמה הרטמן</b> בעזרת קלוד · ליצירת קשר: <a href="mailto:shlomihartman@gmail.com">shlomihartman@gmail.com</a>
         </p>
