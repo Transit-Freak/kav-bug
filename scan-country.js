@@ -71,7 +71,7 @@ async function osrmFetch(url, retries) {
       const r = await fetch(url, { headers: { "user-agent": "kavbug" } });
       if (r.ok) return await r.json();
     } catch (e) { /* ניסיון הבא */ }
-    await sleep(1500 * (attempt + 1));
+    if (attempt + 1 < retries) await sleep(1500 * (attempt + 1));   // בלי המתנה אחרי הניסיון האחרון
   }
   return null;
 }
@@ -472,7 +472,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       const ck = p0.join(",") + ";" + p1.join(",");
       let o = cache.get(ck);
       if (o === undefined) {
-        const j = await osrmFetch(`${OSRM_BASE}/route/v1/driving/${p0[1]},${p0[0]};${p1[1]},${p1[0]}?bearings=${brg(p0, p0n)},30;${brg(p1p, p1)},30&radiuses=25;25&overview=full&geometries=geojson`, 2);
+        const j = await osrmFetch(`${OSRM_BASE}/route/v1/driving/${p0[1]},${p0[0]};${p1[1]},${p1[0]}?bearings=${brg(p0, p0n)},30;${brg(p1p, p1)},30&radiuses=50;50&overview=full&geometries=geojson`, 1);   // ניסיון אחד: NoSegment/NoRoute היא תשובה, לא תקלה
         const r = j && j.code === "Ok" && j.routes && j.routes[0];
         o = r ? { km: r.distance / 1000, route: r.geometry.coordinates.map((c) => [c[1], c[0]]) } : null;
         cache.set(ck, o);
