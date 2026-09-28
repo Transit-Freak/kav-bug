@@ -463,10 +463,16 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       seg.push(B.proj);
       let km = 0; for (let k = 1; k < seg.length; k++) km += havM(seg[k - 1], seg[k]) / 1000;
       if (km < 0.8) return;                                   // מקטע קצר — אין מקום לעיקוף של חצי ק"מ
-      const ck = a.lat + "," + a.lng + ";" + b.lat + "," + b.lng;
+      // נקודות ההתחלה והסוף — על מסלול האוטובוס עצמו (לא נקודת התחנה), עם כיוון הנסיעה
+      // שלו שם. כך OSRM לא יכול "להצמיד" לכביש מקביל (158: הכביש שמעל) או לנתיב הנגדי
+      // (100: הצד השני של הכביש) — שלמה 28.09
+      const brg = (p, q) => { const y = (q[1] - p[1]) * Math.cos(p[0] * Math.PI / 180), x = q[0] - p[0]; return Math.round((Math.atan2(y, x) * 180 / Math.PI + 360) % 360); };
+      const p0 = seg[0], p0n = seg[Math.min(seg.length - 1, 1)], p1 = seg[seg.length - 1], p1p = seg[Math.max(0, seg.length - 2)];
+      if (havM(p0, p0n) < 1 || havM(p1p, p1) < 1) return;
+      const ck = p0.join(",") + ";" + p1.join(",");
       let o = cache.get(ck);
       if (o === undefined) {
-        const j = await osrmFetch(`${OSRM_BASE}/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?approaches=curb;curb&overview=full&geometries=geojson`, 2);
+        const j = await osrmFetch(`${OSRM_BASE}/route/v1/driving/${p0[1]},${p0[0]};${p1[1]},${p1[0]}?bearings=${brg(p0, p0n)},30;${brg(p1p, p1)},30&radiuses=25;25&overview=full&geometries=geojson`, 2);
         const r = j && j.code === "Ok" && j.routes && j.routes[0];
         o = r ? { km: r.distance / 1000, route: r.geometry.coordinates.map((c) => [c[1], c[0]]) } : null;
         cache.set(ck, o);
@@ -482,7 +488,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
         type: "ניווט", from: a.name, to: b.name, city: "", lat: a.lat, lng: a.lng,
         ref: null, excessKm: +excess.toFixed(3), tripsDay, wasteDayKm: +(excess * tripsDay).toFixed(1),
         ratio: +ratio.toFixed(2), verdict: "ספק",
-        reason: `המסלול בין התחנות ארוך פי ${ratio.toFixed(2)} מהדרך הקצרה ברכב (${Math.round(o.km * 1000)} מ', הגעה לכל תחנה מצד הדלת). ייתכן נתיב תח"צ, איסור פנייה או מסוף — לבדיקה.`,
+        reason: `המסלול בין התחנות ארוך פי ${ratio.toFixed(2)} מהדרך הקצרה ברכב (${Math.round(o.km * 1000)} מ', מאותו כביש ובאותו כיוון נסיעה). ייתכן נתיב תח"צ, איסור פנייה או מסוף — לבדיקה.`,
         seg: r5(seg), refGeom: null, lineShape: null, optKm: +o.km.toFixed(3), optRatio: +ratio.toFixed(2), optRoute: r5(o.route), _nav: 1,
       });
     };
