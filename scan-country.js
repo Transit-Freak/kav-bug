@@ -84,6 +84,22 @@ const OSRM_BASE = (process.env.OSRM_URL || "https://router.project-osrm.org").re
 const OSRM_LOCAL = !!process.env.OSRM_URL;
 // approaches=curb: מגיעים לכל נקודה מהצד של המדרכה — הצד שבו נפתחת הדלת (תנועה בימין).
 // בלי זה OSRM מחבר לתחנה מהכיוון ההפוך ומדווח דרך קצרה שאוטובוס לא יכול לעצור בה (שלמה 28.09)
+// היפוך כיוון חד לאורך מסלול: כיוון 25 מ' לפני נקודה מול 25 מ' אחריה, בחלון של עד 50 מ'
+function hasReversal(route) {
+  if (!route || route.length < 3) return false;
+  const cum = [0];
+  for (let i = 1; i < route.length; i++) cum.push(cum[i - 1] + havM(route[i - 1], route[i]));
+  const at = (d) => { let i = 1; while (i < route.length - 1 && cum[i] < d) i++; const a = route[i - 1], b = route[i], L = cum[i] - cum[i - 1] || 1, t = Math.max(0, Math.min(1, (d - cum[i - 1]) / L)); return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; };
+  const brg = (p, q) => Math.atan2((q[1] - p[1]) * Math.cos(p[0] * Math.PI / 180), q[0] - p[0]) * 180 / Math.PI;
+  const tot = cum[cum.length - 1];
+  for (let d = 25; d <= tot - 25; d += 5) {
+    const p0 = at(d - 25), p = at(d), p1 = at(d + 25);
+    if (havM(p0, p) < 10 || havM(p, p1) < 10) continue;
+    const t = Math.abs(((brg(p, p1) - brg(p0, p)) + 540) % 360 - 180);
+    if (t > 120) return true;
+  }
+  return false;
+}
 async function osrmRoute(A, B) {
   const base = `${OSRM_BASE}/route/v1/driving/${A[1]},${A[0]};${B[1]},${B[0]}`;
   const q = "approaches=curb;curb&";
@@ -478,6 +494,10 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
         cache.set(ck, o);
       }
       if (!o || !(o.km > 0)) return;
+      // פרסה בדרך הקצרה = לא דרך שאוטובוס יכול לנסוע בה. גם "פרסה" דרך צומת בכביש מחולק
+      // (שני נתיבים נפרדים) — OSRM רואה בה שתי פניות שמאלה ולא פרסה, כך שהקנס בפרופיל לא תופס
+      // אותה (קו 100 בראשל"צ, שלמה 28.09). כלל: היפוך כיוון של יותר מ-120° בתוך 50 מ' — לא נחשב קיצור.
+      if (hasReversal(o.route)) return;
       const ratio = km / o.km, excess = km - o.km;
       if (ratio < 1.5 || excess < 0.5) return;
       found++;
