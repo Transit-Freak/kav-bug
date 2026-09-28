@@ -323,6 +323,8 @@ function divergentRuns(polyA, polyB, tol) {
 // מ-components.jsx (שנטען לפני app.jsx).
 function CountryIssuePanel({ issue, onBack, onClose }) {
   const [reportOpen, setReportOpen] = React.useState(false);
+  const isNav = !!(issue._nav || issue.type === "ניווט");
+  const busKm = issue.optKm != null ? issue.optKm + (issue.excessKm || 0) : null;
   const dv = dispVerdict(issue);   // גלובלי מ-components.jsx
   const vc = dv === "אמיתי" ? "real" : dv === "רעש" ? "noise"
     : dv === "ספק" ? "doubt" : dv === "כיסוי לגיטימי" ? "cover" : dv === MAP_DOUBT ? "mapdbt" : "incomp";
@@ -353,6 +355,7 @@ function CountryIssuePanel({ issue, onBack, onClose }) {
         <div className="ci-badges">
           <span className={"vd vd-" + vc} title={dv === MAP_DOUBT ? mapDoubtTitle(issue) : ""}>{dv === MAP_DOUBT ? "🗺️ " : ""}{dv}</span>
           {issue.ref ? <span className="ci-ref">מול קו {issue.ref}</span> : null}
+          {isNav ? <span className="ci-ref">מול ניווט ברכב</span> : null}
           {dv === MAP_DOUBT && (
             <div className="modal-hint" style={{ margin: "6px 0 0" }}>
               קו ההשוואה קצר יותר על הנייר, אבל לפי הניווט המסלול כמעט מיטבי — כנראה הבדל
@@ -360,6 +363,9 @@ function CountryIssuePanel({ issue, onBack, onClose }) {
             </div>
           )}
         </div>
+        {isNav && busKm != null ? (
+          <p className="ci-reason"><b>האוטובוס {fmt(busKm)} ק"מ · הדרך הקצרה ברכב {fmt(issue.optKm)} ק"מ</b></p>
+        ) : null}
         <div className="ci-metrics">
           <div className="ci-m"><b>{fmt(issue.excessKm)}</b><span>ק"מ מיותרים</span></div>
           {issue.wasteDayKm != null
@@ -367,7 +373,9 @@ function CountryIssuePanel({ issue, onBack, onClose }) {
             : null}
         </div>
         {issue.reason ? <p className="ci-reason">{issue.reason}</p> : null}
-        <p className="ci-hint">המקטע מסומן על המפה: <b style={{ color: "#ef8a17" }}>כתום</b> = החלק המיותר · <b style={{ color: "#1f9d57" }}>ירוק</b> = מסלול-ההשוואה · <b style={{ color: "#2563eb" }}>כחול</b> = מסלול הקו.</p>
+        {isNav ? (
+          <p className="ci-hint">המקטע מסומן על המפה: <b style={{ color: "#ef8a17" }}>כתום</b> = מסלול האוטובוס בין שתי התחנות · <b style={{ color: "#1f9d57" }}>ירוק מקווקו</b> = הדרך הקצרה ברכב.</p>
+        ) : <p className="ci-hint">המקטע מסומן על המפה: <b style={{ color: "#ef8a17" }}>כתום</b> = החלק המיותר · <b style={{ color: "#1f9d57" }}>ירוק</b> = מסלול-ההשוואה · <b style={{ color: "#2563eb" }}>כחול</b> = מסלול הקו.</p>}
       </div>
       {reportOpen && <IssueReportModal issue={issue} onClose={() => setReportOpen(false)} />}
     </aside>
@@ -566,7 +574,10 @@ function KavBug() {
     grp.clearLayers();
     if (layerRef.current) layerRef.current.clearLayers(); // לנקות ציור-עיר אם קיים
     // הסטה ימינה (~5 מ') כדי שקטעי הלוך-חזור על אותו כביש יוצגו כשני קווים נפרדים.
-    const shape = offsetRight(issue.lineShape, 5), seg = offsetRight(issue.seg, 5), ref = issue.refGeom;
+    const isNav = !!(issue._nav || issue.type === "ניווט"); // מול ניווט ברכב, לא מול קו אחר
+    const shape = offsetRight(issue.lineShape, 5), seg = offsetRight(issue.seg, 5);
+    // בבעיית-ניווט "הירוק" הוא הדרך הקצרה ברכב (optRoute) במקום קו-ייחוס
+    const ref = isNav ? issue.optRoute : issue.refGeom;
     // כל מסלול הקו (כחול) — רקע/הקשר, כדי שהמקטע לא "ירחף". מצויר בשתי שכבות
     // (הילה רחבה + ליבה) כדי שיישאר גלוי גם כשהעיקוף (כתום, עב יותר) חופף אותו
     // כמעט לגמרי — למשל כשהעיקוף נמצא סמוך לקצה הקו וכל חלון-ההקשר הוא בעצם
@@ -582,11 +593,11 @@ function KavBug() {
     if (issue.seg && issue.seg.length > 1) {
       const from = { lat: issue.seg[0][0], lng: issue.seg[0][1] };
       const to = { lat: issue.seg[issue.seg.length - 1][0], lng: issue.seg[issue.seg.length - 1][1] };
-      const runs = wastefulRuns(issue.seg, issue.refGeom, from, to) || [issue.seg];
+      const runs = isNav ? [issue.seg] : (wastefulRuns(issue.seg, issue.refGeom, from, to) || [issue.seg]);
       runs.forEach((run) => {
         if (!run || run.length < 2) return;
         L.polyline(offsetRight(run, 5), { color: DETOUR, weight: 9, opacity: 1, lineCap: "round", lineJoin: "round" })
-          .addTo(grp).bindTooltip(`החלק המיותר · ${fmt(issue.excessKm)} ק"מ`, { className: "seg-tip", sticky: true });
+          .addTo(grp).bindTooltip(isNav ? `מסלול האוטובוס · ${fmt(issue.optKm + issue.excessKm)} ק"מ` : `החלק המיותר · ${fmt(issue.excessKm)} ק"מ`, { className: "seg-tip", sticky: true });
       });
     
       // שמות תחנות-הקצה של המקטע השגוי — גלויים תמיד בלחיצה (בקשת המשתמש):
@@ -608,10 +619,10 @@ function KavBug() {
     const refDraw = ref;
     if (refDraw && refDraw.length > 1) {
       L.polyline(refDraw, { color: ALT, weight: 6, opacity: 0.95, dashArray: "2 9", lineCap: "round", lineJoin: "round" })
-        .addTo(grp).bindTooltip(`הדרך הקצרה — קו ${issue.ref}`, { className: "seg-tip", sticky: true });
+        .addTo(grp).bindTooltip(isNav ? `הדרך הקצרה ברכב · ${fmt(issue.optKm)} ק"מ` : `הדרך הקצרה — קו ${issue.ref}`, { className: "seg-tip", sticky: true });
     }
     // הדרך הקצרה-בכביש לפי ניווט אובייקטיבי (OSRM), אם חושבה — סגול, מקווקו דק.
-    if (issue.optRoute && issue.optRoute.length > 1) {
+    if (!isNav && issue.optRoute && issue.optRoute.length > 1) {
       L.polyline(issue.optRoute, { color: "#7c3aed", weight: 5, opacity: 0.9, dashArray: "1 8", lineCap: "round", lineJoin: "round" })
         .addTo(grp).bindTooltip(`הדרך הקצרה בכביש (ניווט)${issue.optRatio ? ` · הקו נוסע פי ${issue.optRatio}` : ""}`, { className: "seg-tip", sticky: true });
     }

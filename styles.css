@@ -774,6 +774,18 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
 
 /* ----- חלון "כל הארץ" ----- */
 .country-modal { width: 760px; }
+.country-table .nav-km { font-size: 12.5px; font-weight: 700; color: var(--ink); margin-top: 3px; }
+.country-table .nav-reason { font-size: 12px; color: var(--ink-soft); margin-top: 2px; line-height: 1.4; }
+.country-tabs { display: flex; gap: 0; margin: 4px 0 10px; border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; }
+.country-tab {
+  flex: 1 1 0; min-width: 0; border: 0; background: transparent; color: var(--ink-soft);
+  padding: 9px 8px; font-family: "Heebo", sans-serif; font-size: 14px; font-weight: 700; cursor: pointer;
+  transition: background .12s;
+}
+.country-tab + .country-tab { border-inline-start: 1px solid var(--line-strong); }
+.country-tab:hover { background: var(--line); }
+.country-tab.on { background: var(--brand); color: #fff; }
+.country-tab .chip-n { opacity: .75; font-weight: 700; margin-inline-start: 4px; }
 .country-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0 12px; }
 .country-controls .chip {
   border: 1px solid var(--line-strong); background: transparent; color: var(--ink-soft);
