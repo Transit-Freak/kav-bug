@@ -593,11 +593,17 @@ function KavBug() {
     if (issue.seg && issue.seg.length > 1) {
       const from = { lat: issue.seg[0][0], lng: issue.seg[0][1] };
       const to = { lat: issue.seg[issue.seg.length - 1][0], lng: issue.seg[issue.seg.length - 1][1] };
-      const runs = isNav ? [issue.seg] : (wastefulRuns(issue.seg, issue.refGeom, from, to) || [issue.seg]);
+      // גם בניווט: רק החלק שסוטה מהדרך הקצרה (optRoute) — לא כל המקטע (שלמה 28.09).
+      // שאר המקטע מצויר בכחול כהקשר, כמו מסלול הקו בבדיקה מול קווים.
+      if (isNav && (!shape || shape.length < 2)) {
+        L.polyline(seg, { color: ROUTE, weight: 5, opacity: 0.85, lineCap: "round", lineJoin: "round" })
+          .addTo(grp).bindTooltip(`קו ${issue.line} · ${fmt(issue.optKm + issue.excessKm)} ק"מ בין התחנות`, { className: "seg-tip", sticky: true });
+      }
+      const runs = wastefulRuns(issue.seg, isNav ? issue.optRoute : issue.refGeom, from, to) || [issue.seg];
       runs.forEach((run) => {
         if (!run || run.length < 2) return;
         L.polyline(offsetRight(run, 5), { color: DETOUR, weight: 9, opacity: 1, lineCap: "round", lineJoin: "round" })
-          .addTo(grp).bindTooltip(isNav ? `מסלול האוטובוס · ${fmt(issue.optKm + issue.excessKm)} ק"מ` : `החלק המיותר · ${fmt(issue.excessKm)} ק"מ`, { className: "seg-tip", sticky: true });
+          .addTo(grp).bindTooltip(`החלק המיותר · ${fmt(issue.excessKm)} ק"מ`, { className: "seg-tip", sticky: true });
       });
     
       // שמות תחנות-הקצה של המקטע השגוי — גלויים תמיד בלחיצה (בקשת המשתמש):
