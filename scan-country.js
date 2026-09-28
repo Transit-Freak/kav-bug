@@ -78,12 +78,19 @@ async function osrmFetch(url, retries) {
 // מחזיר { km, route:[[lat,lng]...]|null } או null. route עלול לחסור גם כשה-km
 // תקין (הבקשה עם geometries נכשלת בנפרד מזו של המרחק) — עדיין שימושי לפתרון
 // "ספק" גם בלי לצייר קו. לשימוש כבד כדאי לארח OSRM עצמאי, לא את שרת-ההדגמה.
+// OSRM_URL — שרת מקומי שהצינור מרים ממפת ישראל (OSM): בלי הגבלת קצב, וכך אפשר לבדוק
+// את כל המקטעים בכל הקווים. בלעדיו — שרת-ההדגמה הציבורי בקצב איטי (מדיניות השימוש שלו).
+const OSRM_BASE = (process.env.OSRM_URL || "https://router.project-osrm.org").replace(/\/$/, "");
+const OSRM_LOCAL = !!process.env.OSRM_URL;
+// approaches=curb: מגיעים לכל נקודה מהצד של המדרכה — הצד שבו נפתחת הדלת (תנועה בימין).
+// בלי זה OSRM מחבר לתחנה מהכיוון ההפוך ומדווח דרך קצרה שאוטובוס לא יכול לעצור בה (שלמה 28.09)
 async function osrmRoute(A, B) {
-  const base = `https://router.project-osrm.org/route/v1/driving/${A[1]},${A[0]};${B[1]},${B[0]}`;
-  const distJ = await osrmFetch(`${base}?overview=false`, 4);
+  const base = `${OSRM_BASE}/route/v1/driving/${A[1]},${A[0]};${B[1]},${B[0]}`;
+  const q = "approaches=curb;curb&";
+  const distJ = await osrmFetch(`${base}?${q}overview=false`, 4);
   if (!distJ || distJ.code !== "Ok" || !distJ.routes || !distJ.routes[0]) return null;
   const km = distJ.routes[0].distance / 1000;
-  const geoJ = await osrmFetch(`${base}?overview=full&geometries=geojson`, 3);
+  const geoJ = await osrmFetch(`${base}?${q}overview=full&geometries=geojson`, 3);
   const rt = geoJ && geoJ.code === "Ok" && geoJ.routes && geoJ.routes[0];
   const route = rt && rt.geometry ? rt.geometry.coordinates.map((c) => [c[1], c[0]]) : null;
   return { km, route };
@@ -428,6 +435,67 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
   }
   issues.sort((a, b) => b.excessKm - a.excessKm);
 
+  // ---- בדיקת ניווט על *כל* המקטעים בכל הקווים (רק עם שרת OSRM מקומי) ----
+  // לכל שתי תחנות עוקבות: אורך המסלול בפועל מול הדרך הקצרה ברכב, כשמגיעים לכל
+  // תחנה מצד הדלת. מקטע ארוך פי 1.5 ובעודף של חצי ק"מ לפחות נכנס כ"ספק" לבדיקה —
+  // אלא אם כבר נמצא בזיהוי הרגיל. זה חסם-תחתון (רכב פרטי), לא פסק-דין.
+  if (OSRM_LOCAL) {
+    console.error("בדיקת ניווט על כל המקטעים (OSRM מקומי)…");
+    const seen = new Set(issues.map((it) => it.line + "|" + it.from + "|" + it.to));
+    const pairs = [];
+    for (const L of analyzed.lines) {
+      if (!L.stops || !L._snap || !L.shape) continue;
+      for (let i = 0; i + 1 < L.stops.length; i++) {
+        const A = L._snap[i], B = L._snap[i + 1];
+        if (!A || !B || !(B.along > A.along)) continue;
+        const a = L.stops[i], b = L.stops[i + 1];
+        if (seen.has(L.number + "|" + a.name + "|" + b.name)) continue;
+        pairs.push({ L, i, A, B, a, b });
+      }
+    }
+    console.error("  מקטעים לבדיקה:", pairs.length);
+    let done = 0, found = 0;
+    const cache = new Map();
+    const work = async (pr) => {
+      const { L, A, B, a, b } = pr;
+      const seg = [A.proj];
+      for (let k = A.seg + 1; k <= B.seg; k++) seg.push([L.shape[k][0], L.shape[k][1]]);
+      seg.push(B.proj);
+      let km = 0; for (let k = 1; k < seg.length; k++) km += havM(seg[k - 1], seg[k]) / 1000;
+      if (km < 0.8) return;                                   // מקטע קצר — אין מקום לעיקוף של חצי ק"מ
+      const ck = a.lat + "," + a.lng + ";" + b.lat + "," + b.lng;
+      let o = cache.get(ck);
+      if (o === undefined) {
+        const j = await osrmFetch(`${OSRM_BASE}/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?approaches=curb;curb&overview=full&geometries=geojson`, 2);
+        const r = j && j.code === "Ok" && j.routes && j.routes[0];
+        o = r ? { km: r.distance / 1000, route: r.geometry.coordinates.map((c) => [c[1], c[0]]) } : null;
+        cache.set(ck, o);
+      }
+      if (!o || !(o.km > 0)) return;
+      const ratio = km / o.km, excess = km - o.km;
+      if (ratio < 1.5 || excess < 0.5) return;
+      found++;
+      const r5 = (g) => g && g.map((p) => [+(+p[0]).toFixed(5), +(+p[1]).toFixed(5)]);
+      const tripsDay = L._tripsDay || 0;
+      issues.push({
+        line: L.number, operator: L.operator, dir: (L.name || "").trim(), rd: L._desc || "",
+        type: "ניווט", from: a.name, to: b.name, city: "", lat: a.lat, lng: a.lng,
+        ref: null, excessKm: +excess.toFixed(3), tripsDay, wasteDayKm: +(excess * tripsDay).toFixed(1),
+        ratio: +ratio.toFixed(2), verdict: "ספק",
+        reason: `המסלול בין התחנות ארוך פי ${ratio.toFixed(2)} מהדרך הקצרה ברכב (${Math.round(o.km * 1000)} מ', הגעה לכל תחנה מצד הדלת). ייתכן נתיב תח"צ, איסור פנייה או מסוף — לבדיקה.`,
+        seg: r5(seg), refGeom: null, lineShape: null, optKm: +o.km.toFixed(3), optRatio: +ratio.toFixed(2), optRoute: r5(o.route), _nav: 1,
+      });
+    };
+    const POOL = 8;
+    for (let k = 0; k < pairs.length; k += POOL) {
+      await Promise.all(pairs.slice(k, k + POOL).map(work));
+      done = Math.min(pairs.length, k + POOL);
+      if (done % 8000 < POOL) console.error("  ניווט:", done, "/", pairs.length, "| חשודים:", found);
+    }
+    console.error("  ניווט הסתיים — מקטעים חשודים:", found);
+    issues.sort((a, b) => b.excessKm - a.excessKm);
+  }
+
   // ---- העשרת OSRM: על *כל* המקטעים עם גאומטריה (לא רק "ספק") ----
   // הרצה קודמת על כל 280 המקטעים בקצב מהיר (300ms) הפעילה הגבלת-קצב זמנית
   // בשרת-ההדגמה הציבורי ונכשלה לגמרי (0/280). עכשיו רצים על כולם, אבל בקצב
@@ -443,7 +511,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
   // שכבר אומתה ידנית על קווים רבים בעבר. ל"ספק" (מעטים, לרוב 0-2) ממשיכים
   // לפתור אוטומטית כמו קודם — שם אין הכרעה קיימת לדרוס.
   console.error("מעשיר עם ניווט אובייקטיבי (OSRM) — כל המקטעים…");
-  const osrmIssues = issues.filter((it) => it.seg && it.seg.length > 1);
+  const osrmIssues = issues.filter((it) => it.seg && it.seg.length > 1 && !it._nav);   // מקטעי הניווט כבר נבדקו
   console.error("  מקטעים שיועשרו:", osrmIssues.length, "(מתוך", issues.length, ")");
   const r5 = (g) => g && g.map((p) => [+(+p[0]).toFixed(5), +(+p[1]).toFixed(5)]);
   const thinP = (g, m2) => {
@@ -458,7 +526,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
     const it = osrmIssues[idx];
     const seg = it.seg;
     const o = await osrmRoute(seg[0], seg[seg.length - 1]);
-    await sleep(2000); // קצב מכובד ובטוח לשרת-ההדגמה הציבורי — כל המקטעים, לא רק "ספק"
+    if (!OSRM_LOCAL) await sleep(2000); // קצב מכובד ובטוח לשרת-ההדגמה הציבורי — בשרת המקומי אין צורך
     if ((idx + 1) % 20 === 0 || idx === osrmIssues.length - 1) console.error("  OSRM התקדמות:", idx + 1, "/", osrmIssues.length, "| הצליחו:", osrmOk);
     if (!o || !(o.km > 0)) continue;
     osrmOk++;
