@@ -55,8 +55,11 @@
       }
       // קומפילציית ה-JSX נשמרת ב-localStorage לפי גרסה: בביקור חוזר אין
       // קומפילציה בכלל (חיסכון של שניות במובייל)
+      // המפתח כולל טביעה של תוכן הקובץ: כל שינוי בקוד מגיע מיד לכל מי שכבר ביקר,
+      // בלי תלות בעדכון ידני של מספר הגרסה (שלמה 28.09 — נפתחה גרסה ישנה)
+      function hash(t) { var h = 5381; for (var i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + t.length.toString(36); }
       function compile(code, src) {
-        var key = "kb-js-" + build + "-" + src;
+        var key = "kb-js-" + build + "-" + src + "-" + hash(code);
         try {
           var c = localStorage.getItem(key);
           if (c) return c;
@@ -64,6 +67,7 @@
         var out = Babel.transform(code, { presets: ["react"], filename: src }).code;
         try {
           Object.keys(localStorage).forEach(function (k) {
+            if (k.indexOf("kb-js-") === 0 && k.indexOf("kb-js-" + build + "-" + src + "-") === 0 && k !== key) localStorage.removeItem(k);
             if (k.indexOf("kb-js-") === 0 && k.indexOf("kb-js-" + build + "-") !== 0) localStorage.removeItem(k);
           });
           localStorage.setItem(key, out);
@@ -82,7 +86,7 @@
           document.body.appendChild(s);
           return;
         }
-        fetch(url)
+        fetch(url, { cache: "no-cache" })
           .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
           .then(function (code) {
             run(compile(code, f.src), f.src);
