@@ -9,6 +9,7 @@ on:
       - "app.jsx"
       - "data.js"
       - "scan-country.js"
+      - "gps-scan.js"
       - "test/**"
       - "package.json"
       - ".github/workflows/test.yml"

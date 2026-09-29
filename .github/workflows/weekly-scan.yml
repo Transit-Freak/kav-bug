@@ -35,9 +35,16 @@ jobs:
           # הפיצול לדפדפן (lite + geo) נגזר מקומית מהקובץ שנמשך, כך ששלושת
           # הקבצים תמיד עקביים — בלי תלות במה שהצינור המרוחק הספיק לכתוב
           node split-geo.js country-scan.json
+          # בדיקת "לפי GPS בפועל" — קובץ נפרד ורשות: אם עוד לא קיים או שבור, נשאר הקודם
+          if curl -fsSL "$BASE/gps-scan.json" -o gps-scan.json.new && python3 -c "import json; json.load(open('gps-scan.json.new'))['issues']"; then
+            mv gps-scan.json.new gps-scan.json
+          else
+            rm -f gps-scan.json.new
+          fi
           git config user.name kavbug-bot
           git config user.email kavbug-bot@users.noreply.github.com
           git add country-scan.json country-scan.csv history.json country-scan-lite.json country-geo.json
+          [ -f gps-scan.json ] && git add gps-scan.json
           if git diff --staged --quiet; then
             echo "אין שינוי — הסריקה המאוחדת טרם עדכנה"
           else

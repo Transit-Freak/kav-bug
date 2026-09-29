@@ -4,9 +4,10 @@
   "private": true,
   "description": "האפליקציה עצמה ללא-בנייה (index.html טוען React/Babel מ-CDN). package.json זה משמש *רק* לבדיקות האוטומטיות (test/).",
   "scripts": {
-    "test": "npm run test:transpile && npm run test:mount",
+    "test": "npm run test:transpile && npm run test:mount && npm run test:gps",
     "test:transpile": "node -e \"const b=require('@babel/core');for(const f of ['components.jsx','app.jsx'])b.transformFileSync(f,{presets:['@babel/preset-react']});console.log('transpile OK')\" && node --check data.js && node --check scan-country.js",
-    "test:mount": "node test/mount-smoke.js"
+    "test:mount": "node test/mount-smoke.js",
+    "test:gps": "node --check gps-scan.js && node test/gps-scan-test.js"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",

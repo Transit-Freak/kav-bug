@@ -528,28 +528,36 @@ function IssueReportModal({ issue, onClose }) {
 // העיקופים בארץ מהטלפון בלי לעבד GTFS — פשוט קורא תוצאה מוכנה.
 // בעיה שנמצאה מול הדרך הקצרה ברכב (OSRM) ולא מול קו אחר
 function isNavIssue(i) { return !!(i && (i._nav || i.type === "ניווט")); }
-function isNavHash() {
-  if (window.__kbCountryTab) return window.__kbCountryTab === "nav";
-  try { return decodeURIComponent((window.location.hash || "").slice(1)) === "nav"; } catch (e) { return false; }
+function isGpsIssue(i) { return !!(i && i.type === "gps"); }
+// הלשונית הפעילה: "lines" (ברירת מחדל) | "nav" (#nav) | "gps" (#gps)
+function countryHashTab() {
+  if (window.__kbCountryTab) return window.__kbCountryTab;
+  try { const h = decodeURIComponent((window.location.hash || "").slice(1)); return h === "nav" || h === "gps" ? h : "lines"; } catch (e) { return "lines"; }
 }
+function isNavHash() { return countryHashTab() === "nav"; }
+// שתי ההכרעות של בדיקת ה-GPS
+const GPS_CODING = "חשד לקידוד מיותר", GPS_WORKS = "כנראה עבודות תשתית";
 function CountryModal({ open, onClose, onPick, initialCity, inline }) {
   const [data, setData] = React.useState(null);
   const [err, setErr] = React.useState(null);
   const [history, setHistory] = React.useState(null); // מגמות: [{date,totalLines,realCount,totalWasteDayKm}]
   const [reportIssue, setReportIssue] = React.useState(null); // עיקוף שנבחר לדיווח (🚩) | null
-  const [filter, setFilter] = React.useState(() => isNavHash() ? "הכל" : "אמיתי");
+  const [filter, setFilter] = React.useState(() => countryHashTab() !== "lines" ? "הכל" : "אמיתי");
+  const [gpsData, setGpsData] = React.useState(null); // gps-scan.json — לשונית "לפי GPS בפועל"
   // שתי לשוניות באותה כתובת: "lines" = השוואה לקווים אחרים (ברירת המחדל, כמו תמיד),
   // "nav" = השוואה לניווט ברכב (type "ניווט"). הלשונית נשמרת ב-#nav בלבד — לא נוגעים
   // בפורמטים הקיימים (#עיר/…, #עיקוף/…), כך שקישורים ישנים מתנהגים בדיוק כמו קודם.
-  const [tab, setTabRaw] = React.useState(() => isNavHash() ? "nav" : "lines");
+  // לשונית שלישית "gps" = לפי GPS בפועל (#gps), מקובץ נפרד gps-scan.json — לא משנה את מספרי שתי האחרות.
+  const [tab, setTabRaw] = React.useState(() => countryHashTab());
   const setTab = React.useCallback((t, keepFilter) => {
     setTabRaw(t); window.__kbCountryTab = t; // נשמר גם כשהרשימה מתחלפת בפאנל-עיקוף וחוזרת
-    if (!keepFilter) setFilter(t === "nav" ? "הכל" : "אמיתי");
+    if (!keepFilter) setFilter(t === "lines" ? "אמיתי" : "הכל");
     try {
       const cur = decodeURIComponent((window.location.hash || "").slice(1));
       const base = window.location.pathname + window.location.search;
-      if (t === "nav" && !cur) window.history.replaceState(null, "", base + "#nav");
-      else if (t === "lines" && cur === "nav") window.history.replaceState(null, "", base);
+      const tabHash = cur === "nav" || cur === "gps";
+      if (t !== "lines" && (!cur || tabHash)) window.history.replaceState(null, "", base + "#" + t);
+      else if (t === "lines" && tabHash) window.history.replaceState(null, "", base);
     } catch (e) { /* ignore */ }
   }, []);
   const [q, setQ] = React.useState("");
@@ -583,7 +591,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
   // קישור עמוק: נקרא פעם אחת אחרי שהנתונים נטענו
   const deepDone = React.useRef(false);
   React.useEffect(() => {
-    if (deepDone.current || !data) return;
+    if (deepDone.current || !data || !gpsData) return;
     deepDone.current = true;
     const h = decodeURIComponent((window.location.hash || "").slice(1));
     let m = h.match(/^עיר\/(.+)$/);
@@ -591,11 +599,11 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
     m = h.match(/^עיקוף\/(.+)$/);
     if (m) {
       const [ln, op, from, to] = m[1].split("~").map((x) => { try { return decodeURIComponent(x); } catch (e) { return x; } });
-      const hit = ((data && data.issues) || []).find((i) => String(i.line) === ln && i.operator === op && i.from === from && i.to === to);
+      const hit = ((data && data.issues) || []).concat((gpsData && gpsData.issues) || []).find((i) => String(i.line) === ln && i.operator === op && i.from === from && i.to === to);
       const hg = hit && (hit.hasGeo != null ? hit.hasGeo : ((hit.seg && hit.seg.length > 1) || (hit.refGeom && hit.refGeom.length > 1)));
-      if (hit) { setQ(ln); if (isNavIssue(hit)) setTab("nav"); if (onPick && hg) withGeo(hit).then(onPick); }
+      if (hit) { setQ(ln); if (isNavIssue(hit)) setTab("nav"); else if (isGpsIssue(hit)) setTab("gps"); if (onPick && hg) withGeo(hit).then(onPick); }
     }
-  }, [data, onPick, lookupCity, withGeo, setTab]);
+  }, [data, gpsData, onPick, lookupCity, withGeo, setTab]);
   React.useEffect(() => {
     if ((!open && !inline) || data || err) return;
     // קודם הקובץ הרזה (~100KB — טבלה בלי גאומטריות); אם עוד לא קיים
@@ -608,6 +616,14 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
       .then(setData)
       .catch((e) => setErr(e.message || String(e)));
   }, [open, inline, data, err]);
+  // בדיקת ה-GPS (gps-scan.json) — נכשלת בשקט: בלי קובץ הלשונית פשוט ריקה
+  React.useEffect(() => {
+    if ((!open && !inline) || gpsData) return;
+    fetch("gps-scan.json?v=" + (window.KAVBUG_BUILD || ""))
+      .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then((g) => setGpsData(g && Array.isArray(g.issues) ? g : { issues: [] }))
+      .catch(() => setGpsData({ issues: [] }));
+  }, [open, inline, gpsData]);
   // מגמות (history.json) — נכשל בשקט (אין שורת-מגמה אם אין קובץ, לא שגיאה).
   React.useEffect(() => {
     if ((!open && !inline) || history) return;
@@ -632,9 +648,10 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
     return out;
   }, [data]);
   const navCount = React.useMemo(() => allIssues.filter(isNavIssue).length, [allIssues]);
-  const isNav = tab === "nav";
+  const isNav = tab === "nav", isGps = tab === "gps";
+  const gpsIssues = (gpsData && gpsData.issues) || [];
   // כל הספירות/סינונים/סטטיסטיקות מחושבים רק על הלשונית הפעילה
-  const issues = React.useMemo(() => allIssues.filter((i) => isNavIssue(i) === isNav), [allIssues, isNav]);
+  const issues = React.useMemo(() => isGps ? gpsIssues : allIssues.filter((i) => isNavIssue(i) === isNav), [allIssues, isNav, isGps, gpsIssues]);
   // ה-return המותנה חייב לבוא אחרי כל קריאות ה-hooks — כשהוא היה לפני
   // ה-useMemo, מספר ה-hooks השתנה בין רינדורים וזו קריסה שמחכה לקרות
   if (!open && !inline) return null;
@@ -652,10 +669,10 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
   const count = (v) => v === "הכל" ? cityIssues.length : cityIssues.filter((i) => dispVerdict(i) === v).length;
   const cityReal = cityIssues.filter((i) => dispVerdict(i) === "אמיתי").length;
   const cityWaste = Math.round(cityIssues.filter((i) => dispVerdict(i) === "אמיתי").reduce((s, i) => s + (i.wasteDayKm || 0), 0));
-  const vClass = (v) => v === "אמיתי" ? "real" : v === "רעש" ? "noise" : v === "ספק" ? "doubt" : v === "כיסוי לגיטימי" ? "cover" : v === MAP_DOUBT ? "mapdbt" : "incomp";
+  const vClass = (v) => v === GPS_CODING ? "real" : v === GPS_WORKS ? "doubt" : v === "אמיתי" ? "real" : v === "רעש" ? "noise" : v === "ספק" ? "doubt" : v === "כיסוי לגיטימי" ? "cover" : v === MAP_DOUBT ? "mapdbt" : "incomp";
   // מגמה ארצית: משווה את הרשומה האחרונה ב-history.json לזו שלפניה. רק בתצוגת
   // "כל הארץ" (לא כשמסוננים לעיר — history הוא סיכום ארצי בלבד).
-  const trend = (!isNav && !city && history && history.length >= 2) ? (() => {
+  const trend = (tab === "lines" && !city && history && history.length >= 2) ? (() => {
     const last = history[history.length - 1], prev = history[history.length - 2];
     return { last, prev, dReal: last.realCount - prev.realCount, dWaste: Math.round((last.totalWasteDayKm || 0) - (prev.totalWasteDayKm || 0)) };
   })() : null;
@@ -663,7 +680,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
   // גרף מגמה: history.json צובר נקודה ליום, וה-UI הציג רק הפרש בין שתי
   // הריצות האחרונות. "כמה ק"מ מבוזבזים בארץ, ומה הכיוון" הוא הנתון החזק
   // ביותר שיש כאן — SVG ידני, בלי ספרייה, בהתאם לגישת ה-no-build של האתר.
-  const spark = (!isNav && !city && history && history.length >= 3) ? (() => {
+  const spark = (tab === "lines" && !city && history && history.length >= 3) ? (() => {
     const pts = history.filter((h) => h && h.totalWasteDayKm != null).slice(-60);
     if (pts.length < 3) return null;
     const vals = pts.map((h) => h.totalWasteDayKm);
@@ -699,14 +716,25 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
         {data && (
           <>
             <div className="country-tabs" role="tablist" aria-label="סוג הבדיקה">
-              <button role="tab" aria-selected={!isNav} className={"country-tab" + (!isNav ? " on" : "")} onClick={() => setTab("lines")}>
+              <button role="tab" aria-selected={tab === "lines"} className={"country-tab" + (tab === "lines" ? " on" : "")} onClick={() => setTab("lines")}>
                 🚌 השוואה לקווים אחרים <span className="chip-n">{allIssues.length - navCount}</span>
               </button>
               <button role="tab" aria-selected={isNav} className={"country-tab" + (isNav ? " on" : "")} onClick={() => setTab("nav")}>
                 🚗 השוואה לניווט ברכב <span className="chip-n">{navCount}</span>
               </button>
+              <button role="tab" aria-selected={isGps} className={"country-tab" + (isGps ? " on" : "")} onClick={() => setTab("gps")}>
+                🛰️ לפי GPS בפועל <span className="chip-n">{gpsIssues.length}</span>
+              </button>
             </div>
-            {isNav ? (
+            {isGps ? (
+            <p className="modal-hint">
+              מקטעים במסלול המתוכנן שהאוטובוסים כמעט לא נוסעים בהם בפועל לפי ה-GPS (פחות מ-20% מהנסיעות, לפחות 15 נסיעות בשבועיים), ועוקפים אותם בדרך קצרה יותר. בכתום המקטע המתוכנן, בירוק הדרך בפועל. הימנעות קצרה, של כמה קווים יחד או אחרי תקופה שבה נסעו שם — "כנראה עבודות תשתית".
+              {" · "}{city ? city.name + " · " : ""}<b>{cityIssues.length}</b> מקטעים
+              {gpsData && gpsData.linesChecked ? " · " + Number(gpsData.linesChecked).toLocaleString("he-IL") + " קווים עם GPS · " + Number(gpsData.ridesChecked || 0).toLocaleString("he-IL") + " נסיעות" : ""}
+              {gpsData && gpsData.generatedAt ? " · עודכן " + new Date(gpsData.generatedAt).toLocaleDateString("he-IL") : ""}
+              {onPick ? " · לחצו על שורה כדי להציג על המפה 🗺️" : ""}
+            </p>
+            ) : isNav ? (
             <p className="modal-hint">
               כל מקטע בין שתי תחנות מושווה לדרך הקצרה ברכב, מאותו כביש ובאותו כיוון נסיעה, בלי פרסות ובלי דרכים לא סלולות. לרוב ההבדל נובע מכביש חסום או נתיב תח"צ — לבדיקה.
               {" · "}{city ? city.name + " · " : ""}<b>{cityIssues.length}</b> מקטעים
@@ -753,7 +781,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
               </p>
             )}
             <div className="country-controls">
-              {(isNav ? [...new Set(issues.map(dispVerdict).filter(Boolean))].concat(["הכל"]) : ["אמיתי", MAP_DOUBT, "כיסוי לגיטימי", "ספק", "לא ניתן להשוואה", "רעש", "הכל"]).map((v) => (
+              {(isGps ? [GPS_CODING, GPS_WORKS, "הכל"] : isNav ? [...new Set(issues.map(dispVerdict).filter(Boolean))].concat(["הכל"]) : ["אמיתי", MAP_DOUBT, "כיסוי לגיטימי", "ספק", "לא ניתן להשוואה", "רעש", "הכל"]).map((v) => (
                 <button key={v} className={"chip chip-" + vClass(v) + (filter === v ? " on" : "")} onClick={() => setFilter(v)}>
                   {v} <span className="chip-n">{count(v)}</span>
                 </button>
@@ -769,7 +797,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
                   <th scope="col">קו</th><th scope="col">מפעיל</th><th scope="col">מקטע</th>
                   <th scope="col" aria-sort={sort === "excess" ? "descending" : "none"}>מיותר</th>
                   <th scope="col" aria-sort={sort === "waste" ? "descending" : "none"}>מבזבז/יום</th>
-                  <th scope="col">{isNav ? "ברכב" : "מול"}</th><th scope="col">הכרעה</th><th scope="col"><span className="sr-only">פעולות</span></th>
+                  <th scope="col">{isGps ? "נסעו בו" : isNav ? "ברכב" : "מול"}</th><th scope="col">הכרעה</th><th scope="col"><span className="sr-only">פעולות</span></th>
                 </tr></thead>
                 <tbody>
                   {shown.map((i, k) => {
@@ -785,10 +813,11 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
                         <td>{i.operator}</td>
                         <td className="seg">{i.rd || i.dir ? <div className="seg-dir" title="כיוון הנסיעה של הקו שבו נמצא המקטע">🧭 {i.rd ? fmtRd(i.rd) : null}{i.rd && i.dir ? <> · </> : null}{i.dir ? fmtDir(i.dir) : null}</div> : null}{i.from} → {i.to}{i.city ? <span className="seg-city" title="העיר של המקטע השגוי"> · 📍 {i.city}</span> : null}{onPick && hasGeo ? <span className="map-ico"> 🗺️</span> : null}
                           {isNav && i.optKm != null ? <div className="nav-km">האוטובוס {fmt(i.optKm + (i.excessKm || 0))} ק"מ · הדרך הקצרה ברכב {fmt(i.optKm)} ק"מ</div> : null}
-                          {isNav && i.reason ? <div className="nav-reason">{i.reason}</div> : null}</td>
+                          {isGps && i.segKm != null ? <div className="nav-km">מתוכנן {fmt(i.segKm)} ק"מ · בפועל {fmt(i.gpsKm)} ק"מ</div> : null}
+                          {(isNav || isGps) && i.reason ? <div className="nav-reason">{i.reason}</div> : null}</td>
                         <td className="num">{i.excessKm} ק"מ</td>
                         <td className="num waste" title={i.tripsDay ? i.tripsDay + " נסיעות ביום עמוס" : ""}>{i.wasteDayKm != null ? i.wasteDayKm + " ק\"מ" : "—"}</td>
-                        <td className="num" title={isNav && i.optRatio ? "האוטובוס נוסע פי " + i.optRatio + " מהדרך הקצרה ברכב" : ""}>{isNav ? (i.optKm != null ? fmt(i.optKm) + " ק\"מ" : "—") : i.ref}</td>
+                        <td className="num" title={isGps ? (i.ridesChecked + " נסיעות נבדקו" + (i.since ? " · לא עוברים כאן מ-" + new Date(i.since).toLocaleDateString("he-IL") : "")) : isNav && i.optRatio ? "האוטובוס נוסע פי " + i.optRatio + " מהדרך הקצרה ברכב" : ""}>{isGps ? Math.round((i.share || 0) * 100) + "% מ-" + i.ridesChecked : isNav ? (i.optKm != null ? fmt(i.optKm) + " ק\"מ" : "—") : i.ref}</td>
                         <td>
                           <span className={"vd vd-" + vClass(dispVerdict(i))}
                             title={dispVerdict(i) === MAP_DOUBT ? mapDoubtTitle(i) : ""}>
@@ -822,7 +851,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
   if (inline) {
     return (
       <aside className="panel country-panel">
-        <div className="modal-head"><h2>{city ? city.name : (isNav ? "כל הארץ — מול ניווט ברכב" : "כל הארץ — עיקופים")}</h2></div>
+        <div className="modal-head"><h2>{city ? city.name : (isGps ? "כל הארץ — לפי GPS בפועל" : isNav ? "כל הארץ — מול ניווט ברכב" : "כל הארץ — עיקופים")}</h2></div>
         {content}
       </aside>
     );
@@ -1086,16 +1115,24 @@ function InfoModal({ open, onClose }) {
             </div>
           </div>
           <div className="how-row">
+            <span className="how-dot detour"></span>
+            <div>
+              <b>5 · לפי GPS בפועל</b>
+              <p>כל לילה נדגמות כמה נסיעות ביום של קבוצה מתחלפת של קווים, מנתוני ה-GPS שהסדנא לידע ציבורי שומרת (Open Bus Stride). לכל מקטע בין שתי תחנות נבדק איזה חלק מהנסיעות עבר בו בפועל (במרחק עד 40 מ'). מקטע שפחות מ-20% מהנסיעות עוברות בו — לפחות 15 נסיעות על פני שבועיים — והנסיעות עוקפות אותו בדרך קצרה יותר, מופיע בלשונית "לפי GPS בפועל": המקטע המתוכנן בכתום והדרך שבה נוסעים בפועל בירוק.</p>
+              <p>ההבחנה בין טעות קידוד לעבודות: "כנראה עבודות תשתית" כשההימנעות נמשכת פחות מ-4 שבועות, כשכמה קווים שונים הפסיקו לעבור באותו מקום באותם ימים, כשעד תאריך מסוים נסעו במקטע ואז הפסיקו, או כשבהיסטוריית הקו (הקו הבוחן) יש שינוי זמני שהתבטל סביב אותו זמן. רק מקטע שלא נסעו בו בכל התקופה הנצפית, 4 שבועות לפחות, מסומן "חשד לקידוד מיותר".</p>
+            </div>
+          </div>
+          <div className="how-row">
             <span className="how-dot ok"></span>
             <div>
-              <b>5 · סינון התראות-שווא</b>
+              <b>6 · סינון התראות-שווא</b>
               <p>לפני שקטע מסומן, סדרת שערים גאומטריים מסננת מצבים שנראים כעיקוף אך אינם: תמרון-יציאה ממסוף, היפוך בתחנת-קצה, אשכולות תחנות צפופים, ושגיאות-דיגיטציה בנתונים. כך מצמצמים התראות-שווא.</p>
             </div>
           </div>
           <div className="how-row">
             <span className="how-dot ai"></span>
             <div>
-              <b>6 · אימות (AI / אבחון מהיר)</b>
+              <b>7 · אימות (AI / אבחון מהיר)</b>
               <p>כל קטע חשוד מקבל הכרעה — <b>אמיתי</b> או <b>ספק</b>. כשמודל ה-AI זמין הוא מנתח את הקואורדינטות ומנמק (🤖 ניתוח AI); אחרת חישוב-חוקים דטרמיניסטי מכריע (⚡ אבחון מהיר). בכל מקרה החלטות-הברזל הגאומטריות שומרות על הדיוק.</p>
             </div>
           </div>

@@ -16,7 +16,7 @@ const src = process.argv[2] || "country-scan.json";
 const report = JSON.parse(fs.readFileSync(src, "utf8"));
 const issues = report.issues || [];
 
-const GEO_FIELDS = ["seg", "refGeom", "lineShape", "optRoute", "optSteps"];
+const GEO_FIELDS = ["seg", "refGeom", "lineShape", "optRoute", "optSteps", "gpsRoute"];
 const liteIssues = issues.map((i, idx) => {
   const o = { _g: idx };   // מפתח הגאומטריה בקובץ הנלווה
   for (const k of Object.keys(i)) if (!GEO_FIELDS.includes(k)) o[k] = i[k];
