@@ -17,6 +17,9 @@ const lines = [
   { rid: "2", num: "20", lat: 32.02, mode: "stopped", days: 35 },
   { rid: "3", num: "30", lat: 32.02, mode: "stopped", days: 35 },
   { rid: "4", num: "40", lat: 32.04, mode: "never", days: 20 },
+  { rid: "6", num: "60", lat: 32.08, mode: "gap", days: 35 },
+  { rid: "8", num: "80", lat: 32.12, mode: "never", days: 35 },
+  { rid: "7", num: "70", lat: 32.10, mode: "jump", days: 35 },
   { rid: "5", num: "50", lat: 32.06, mode: "never", days: 35 },
 ];
 const stopsTxt = ["stop_id,stop_name,stop_lat,stop_lon,stop_desc"], routes = ["route_id,agency_id,route_short_name,route_long_name,route_desc,route_type"];
@@ -33,6 +36,7 @@ for (const L of lines) {
   for (let x = 34.810; x <= 34.8201; x += 0.001) pts.push([L.lat, x]);
   pts.forEach((p, k) => shapes.push(`sh${L.rid},${p[0].toFixed(6)},${p[1].toFixed(6)},${k + 1}`));
   L.shape = pts;
+  if (L.rid === "8") trips.push(`${L.rid},s1,t8b,other-shape`);
   const rides = [];
   for (let d = L.days; d >= 1; d--) {
     const date = addDays(TODAY, -d);
@@ -43,10 +47,13 @@ for (const L of lines) {
     const gps = [];
     for (let i = 0; i < src.length; i++) {
       const a = src[i], b = src[i + 1] || a;
-      for (let t = 0; t < 1; t += 0.5) gps.push([a[0] + (b[0] - a[0]) * t + (Math.random() - 0.5) * 0.00008, a[1] + (b[1] - a[1]) * t + (Math.random() - 0.5) * 0.00008]);
+      for (let t = 0; t < 1; t += 0.5) gps.push([a[0] + (b[0] - a[0]) * t + (0.5 - 0.5) * 0.00008, a[1] + (b[1] - a[1]) * t + (0.5 - 0.5) * 0.00008]);
     }
-    rides.push({ id: L.rid + d, date, points: gps });
-    if (L.rid === "4") rides.push({ id: L.rid + d + "b", date, points: gps }); // שתי נסיעות ביום — 20 נסיעות ב-20 יום
+    const base = Date.parse(date + "T06:00:00Z");
+    const timed = gps.map((p, i) => [...p, base + i * 15000 + (L.mode === "gap" && i > 9 ? 300000 : 0)]);
+    if (L.mode === "jump") timed.forEach((p, i) => { p[2] = base + i; });
+    rides.push({ id: L.rid + d, date, points: timed });
+    rides.push({ id: L.rid + d + "b", date, points: timed }); // שתי נסיעות ביום — 20 נסיעות ב-20 יום
   }
   fs.writeFileSync(path.join(fx, L.rid + ".json"), JSON.stringify(rides));
 }
@@ -63,10 +70,13 @@ cp.execFileSync("node", [path.join(__dirname, "..", "gps-scan.js"), g, cache, ou
   { env: { ...process.env, GPS_FIXTURE: fx, GPS_TODAY: TODAY, GPS_RIDES_PER_DAY: "2" }, stdio: "inherit" });
 const r = JSON.parse(fs.readFileSync(out, "utf8"));
 const v = (n) => (r.issues.find((i) => i.line === n) || {}).verdict;
-const expect = { 10: "חשד לקידוד מיותר", 20: "כנראה עבודות תשתית", 30: "כנראה עבודות תשתית", 40: "כנראה עבודות תשתית", 50: "כנראה עבודות תשתית" };
+const expect = { 10: "חשד לקידוד מיותר", 20: "כנראה עבודות תשתית", 30: "כנראה עבודות תשתית", 40: "סיבה לא ידועה", 50: "כנראה עבודות תשתית" };
 let ok = true;
 for (const [n, want] of Object.entries(expect)) { const got = v(n); console.log((got === want ? "✓" : "✗"), "קו", n, got, "|", (r.issues.find((i) => i.line === n) || {}).reason); if (got !== want) ok = false; }
 if (r.issues.length !== 5) { console.log("✗ מספר ממצאים", r.issues.length); ok = false; }
+for (const n of ["60", "70", "80"]) if (r.issues.some((i) => i.line === n)) { console.log("✗ חור GPS זוהה כקיצור", n); ok = false; }
+if (r.ambiguousLines !== 1) { console.log("✗ חלופות לא הופרדו"); ok = false; }
+if (!r.issues.every((i) => i.evidenceDays >= 3)) { console.log("✗ חסרות ראיות חוזרות"); ok = false; }
 // ריצה שנייה: המטמון מלא — לא אמורה להוסיף נסיעות
 cp.execFileSync("node", [path.join(__dirname, "..", "gps-scan.js"), g, cache, out, "--history", hist],
   { env: { ...process.env, GPS_FIXTURE: fx, GPS_TODAY: TODAY, GPS_RIDES_PER_DAY: "2" }, stdio: "inherit" });

@@ -729,9 +729,11 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
             </div>
             {isGps ? (
             <p className="modal-hint">
-              מקטעים במסלול המתוכנן שהאוטובוסים כמעט לא נוסעים בהם בפועל לפי ה-GPS (פחות מ-20% מהנסיעות, לפחות 15 נסיעות בשבועיים), ועוקפים אותם בדרך קצרה יותר. בכתום המקטע המתוכנן, בירוק הדרך בפועל. הימנעות קצרה, של כמה קווים יחד או אחרי תקופה שבה נסעו שם — "כנראה עבודות תשתית".
+              מקטעים במסלול המתוכנן שהאוטובוסים כמעט לא נוסעים בהם בפועל לפי ה-GPS (פחות מ-20% מהנסיעות, לפחות 15 נסיעות בשבועיים), ועוקפים אותם בדרך קצרה יותר. בכתום המקטע המתוכנן, בירוק הדרך בפועל. פערי דיווח אינם נחשבים דילוג. נדרשת דרך חלופית שנצפתה בשלושה ימים לפחות. סטייה קצרה ללא ראיות נוספות מסומנת "סיבה לא ידועה".
               {" · "}{city ? city.name + " · " : ""}<b>{cityIssues.length}</b> מקטעים
               {gpsData && gpsData.linesChecked ? " · " + Number(gpsData.linesChecked).toLocaleString("he-IL") + " קווים עם GPS · " + Number(gpsData.ridesChecked || 0).toLocaleString("he-IL") + " נסיעות" : ""}
+              {gpsData && gpsData.totalLines ? " · כיסוי " + Math.round(100 * gpsData.linesChecked / gpsData.totalLines) + "% מהחלופות" : ""}
+              {gpsData && gpsData.ambiguousLines ? " · " + gpsData.ambiguousLines + " חלופות עם כמה מסלולים ממתינות להתאמה" : ""}
               {gpsData && gpsData.generatedAt ? " · עודכן " + new Date(gpsData.generatedAt).toLocaleDateString("he-IL") : ""}
               {onPick ? " · לחצו על שורה כדי להציג על המפה 🗺️" : ""}
             </p>
@@ -819,7 +821,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
                           {(isNav || isGps) && i.reason ? <div className="nav-reason">{i.reason}</div> : null}</td>
                         <td className="num">{i.excessKm} ק"מ</td>
                         <td className="num waste" title={i.tripsDay ? i.tripsDay + " נסיעות ביום עמוס" : ""}>{i.wasteDayKm != null ? i.wasteDayKm + " ק\"מ" : "—"}</td>
-                        <td className="num" title={isGps ? (i.ridesChecked + " נסיעות נבדקו" + (i.since ? " · לא עוברים כאן מ-" + new Date(i.since).toLocaleDateString("he-IL") : "")) : isNav && i.optRatio ? "האוטובוס נוסע פי " + i.optRatio + " מהדרך הקצרה ברכב" : ""}>{isGps ? Math.round((i.share || 0) * 100) + "% מ-" + i.ridesChecked : isNav ? (i.optKm != null ? fmt(i.optKm) + " ק\"מ" : "—") : i.ref}</td>
+                        <td className="num" title={isGps ? (i.ridesChecked + " נסיעות נבדקו" + (i.evidenceDays ? " · דרך חלופית ב-" + i.evidenceDays + " ימים · ביטחון " + i.confidence : "") + (i.since ? " · לא עוברים כאן מ-" + new Date(i.since).toLocaleDateString("he-IL") : "")) : isNav && i.optRatio ? "האוטובוס נוסע פי " + i.optRatio + " מהדרך הקצרה ברכב" : ""}>{isGps ? Math.round((i.share || 0) * 100) + "% מ-" + i.ridesChecked : isNav ? (i.optKm != null ? fmt(i.optKm) + " ק\"מ" : "—") : i.ref}</td>
                         <td>
                           <span className={"vd vd-" + vClass(dispVerdict(i))}
                             title={dispVerdict(i) === MAP_DOUBT ? mapDoubtTitle(i) : ""}>
