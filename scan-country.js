@@ -68,8 +68,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function osrmFetch(url, retries) {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      const r = await fetch(url, { headers: { "user-agent": "kavbug" } });
+      const r = await fetch(url, { headers: { "user-agent": "kavbug" }, signal: AbortSignal.timeout(15000) });
       if (r.ok) return await r.json();
+      if (r.status === 400) {
+        const j = await r.json();
+        if (["NoRoute", "NoSegment"].includes(j.code)) return j;
+      }
     } catch (e) { /* ניסיון הבא */ }
     if (attempt + 1 < retries) await sleep(1500 * (attempt + 1));   // בלי המתנה אחרי הניסיון האחרון
   }
@@ -203,6 +207,7 @@ function tnow() { return Date.now(); }
 function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
 
 (async function main() {
+  if (!OSRM_LOCAL) throw new Error("סריקת ניווט מלאה דורשת OSRM_URL; התוצאות הקודמות נשמרות");
   const t0 = tnow();
   console.error("קורא את הקובץ:", zipPath);
   const u8 = new Uint8Array(fs.readFileSync(zipPath));
@@ -470,7 +475,8 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       }
     }
     console.error("  מקטעים לבדיקה:", pairs.length);
-    let done = 0, found = 0;
+    let done = 0, found = 0, requests = 0, responses = 0, failures = 0;
+    const navigationScan = { status: "running", pairs: pairs.length };
     const cache = new Map();
     const work = async (pr) => {
       const { L, A, B, a, b } = pr;
@@ -489,6 +495,9 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       let o = cache.get(ck);
       if (o === undefined) {
         const j = await osrmFetch(`${OSRM_BASE}/route/v1/driving/${p0[1]},${p0[0]};${p1[1]},${p1[0]}?bearings=${brg(p0, p0n)},30;${brg(p1p, p1)},30&radiuses=50;50&overview=full&geometries=geojson`, 1);   // ניסיון אחד: NoSegment/NoRoute היא תשובה, לא תקלה
+        requests++;
+        if (j && ["Ok", "NoRoute", "NoSegment"].includes(j.code)) responses++;
+        else failures++;
         const r = j && j.code === "Ok" && j.routes && j.routes[0];
         o = r ? { km: r.distance / 1000, route: r.geometry.coordinates.map((c) => [c[1], c[0]]) } : null;
         cache.set(ck, o);
@@ -520,7 +529,9 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       done = Math.min(pairs.length, k + POOL);
       if (done % 8000 < POOL) console.error("  ניווט:", done, "/", pairs.length, "| חשודים:", found);
     }
-    console.error("  ניווט הסתיים — מקטעים חשודים:", found);
+    if (!requests || failures) throw new Error(`סריקת ניווט לא הושלמה: ${responses}/${requests} תשובות, ${failures} כשלים; לא מפרסמים דוח חלקי`);
+    global.navigationScan = { ...navigationScan, status: "completed", requests, responses, failures, found, completedAt: new Date().toISOString() };
+    console.error("  ניווט הסתיים — מקטעים חשודים:", found, "| בקשות:", requests, "| תשובות:", responses);
     issues.sort((a, b) => b.excessKm - a.excessKm);
   }
 
@@ -591,6 +602,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
   const report = {
     generatedAt: new Date().toISOString(),
     sourceZip: path.basename(zipPath),
+    navigationScan: global.navigationScan,
     totalLines: analyzed.lines.length,
     totalIssues: issues.length,
     realCount: real.length,
