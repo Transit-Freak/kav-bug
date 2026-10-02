@@ -494,7 +494,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "ש'"; }
       const ck = p0.join(",") + ";" + p1.join(",");
       let o = cache.get(ck);
       if (o === undefined) {
-        const j = await osrmFetch(`${OSRM_BASE}/route/v1/driving/${p0[1]},${p0[0]};${p1[1]},${p1[0]}?bearings=${brg(p0, p0n)},30;${brg(p1p, p1)},30&radiuses=50;50&overview=full&geometries=geojson`, 1);   // ניסיון אחד: NoSegment/NoRoute היא תשובה, לא תקלה
+        const j = await osrmFetch(`${OSRM_BASE}/route/v1/driving/${p0[1]},${p0[0]};${p1[1]},${p1[0]}?bearings=${brg(p0, p0n)},30;${brg(p1p, p1)},30&radiuses=50;50&overview=full&geometries=geojson`, 2);   // ניסיון חוזר רק לכשל זמני; NoSegment/NoRoute היא תשובה, לא תקלה
         requests++;
         if (j && ["Ok", "NoRoute", "NoSegment"].includes(j.code)) responses++;
         else failures++;
