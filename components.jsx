@@ -649,6 +649,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
   }, [data]);
   const navCount = React.useMemo(() => allIssues.filter(isNavIssue).length, [allIssues]);
   const isNav = tab === "nav", isGps = tab === "gps";
+  const navVerified = data && data.navigationScan && data.navigationScan.status === "completed";
   const gpsIssues = (gpsData && gpsData.issues) || [];
   // כל הספירות/סינונים/סטטיסטיקות מחושבים רק על הלשונית הפעילה
   const issues = React.useMemo(() => isGps ? gpsIssues : allIssues.filter((i) => isNavIssue(i) === isNav), [allIssues, isNav, isGps, gpsIssues]);
@@ -720,7 +721,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
                 🚌 השוואה לקווים אחרים <span className="chip-n">{allIssues.length - navCount}</span>
               </button>
               <button role="tab" aria-selected={isNav} className={"country-tab" + (isNav ? " on" : "")} onClick={() => setTab("nav")}>
-                🚗 השוואה לניווט ברכב <span className="chip-n">{navCount}</span>
+                🚗 השוואה לניווט ברכב <span className="chip-n">{navVerified ? navCount : "לא הושלמה"}</span>
               </button>
               <button role="tab" aria-selected={isGps} className={"country-tab" + (isGps ? " on" : "")} onClick={() => setTab("gps")}>
                 🛰️ לפי GPS בפועל <span className="chip-n">{gpsIssues.length}</span>
@@ -736,6 +737,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
             </p>
             ) : isNav ? (
             <p className="modal-hint">
+              {!navVerified && <><strong>הבדיקה המלאה לא הושלמה. אפס תוצאות אינו אומר שאין בעיות.</strong><br /></>}
               כל מקטע בין שתי תחנות מושווה לדרך הקצרה ברכב, מאותו כביש ובאותו כיוון נסיעה, בלי פרסות ובלי דרכים לא סלולות. לרוב ההבדל נובע מכביש חסום או נתיב תח"צ — לבדיקה.
               {" · "}{city ? city.name + " · " : ""}<b>{cityIssues.length}</b> מקטעים
               {data.generatedAt ? " · עודכן " + new Date(data.generatedAt).toLocaleDateString("he-IL") : ""}
