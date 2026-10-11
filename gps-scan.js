@@ -52,6 +52,8 @@ const OFFLINE = env.GPS_OFFLINE === "1";
 const LINES_PER_NIGHT = +(env.GPS_LINES_PER_NIGHT || 60);
 const DAYS = +(env.GPS_DAYS || 35);
 const RIDES_PER_DAY = +(env.GPS_RIDES_PER_DAY || 2);
+const DEPTH_DAYS = +(env.GPS_DEPTH_DAYS || 14);  // כמה ימים אחרונים נמשכים לכל קו ברצף
+const MAX_FETCH = +(env.GPS_MAX_FETCH || 0);     // לבדיקות: תקרת ימי-קו לריצה (מדמה את תקציב הזמן)
 const BUDGET_MS = +(env.GPS_BUDGET_MIN || 25) * 60000;
 const TODAY = env.GPS_TODAY || new Date().toISOString().slice(0, 10);
 
@@ -359,6 +361,16 @@ function tempChanges(rd) {
 }
 
 // ---------------------------------------------------------------- ניתוח
+// בדיקה מהירה אחרי השבועיים האחרונים: יש מקטע שרוב הנסיעות לא עוברות בו?
+function suspectLine(cache) {
+  const rs = cache.rides; if (rs.length < 5) return false;
+  const n = rs[0].b.length;
+  for (let s = 0; s < n; s++) {
+    const rec = rs.filter((r) => r.b[s] !== "?");
+    if (rec.length >= 5 && rec.filter((r) => r.b[s] === "1").length / rec.length < LOW_SHARE) return true;
+  }
+  return false;
+}
 function analyzeLine(line, secs, cache) {
   const rides = cache.rides.slice().sort((a, b) => (a.d < b.d ? -1 : 1));
   if (rides.length < MIN_RIDES) return [];
@@ -433,16 +445,25 @@ function analyzeLine(line, secs, cache) {
       if (inCache[i]) order.push(inCache[i]);
     }
     const dates = []; for (let k = DAYS; k >= 1; k--) dates.push(addDays(TODAY, -k));
-    outer: for (let round = 0; round < DAYS; round++) for (const l of order) {
+    // לעומק ולא לרוחב (11.10): הניתוח צריך לפחות 15 נסיעות ב-7 ימים שונים מתוך שבועיים לאותו קו.
+    // כשכל קו קיבל יום אחד בכל סבב, התקציב נגמר באמצע הסבב הראשון, אף קו לא הגיע לסף והלשונית
+    // הציגה 0 מאז 02.10. עכשיו כל קו מקבל ברצף את DEPTH_DAYS הימים האחרונים, ורק אז עוברים לבא.
+    let fetchedDays = 0;
+    outer: for (const l of order) {
       const secs = getSecs(l), c = loadCache(l, sigOf.get(l.rid));
-      // משלימים ימים חסרים, כולל בקשות שנכשלו בריצה קודמת.
-      const last = Object.keys(c.days).sort().pop();
-      const need = dates.filter((d, k) => c.days[d] == null && (last ? true : (DAYS - 1 - k) % 2 === 0));
-      // יום אחד לכל קו בכל סבב, כדי שקו אחד לא יצרוך את כל התקציב.
-      const spread = [];
-      for (let i = 0, j = need.length - 1; i <= j; i++, j--) { spread.push(need[i]); if (i < j) spread.push(need[j]); }
-      for (const d of spread.slice(0, 1)) {
-        if (Date.now() - t0 > BUDGET_MS) { saveCache(c); console.error("  תקציב הזמן נגמר"); break outer; }
+      // משלימים ימים חסרים (כולל בקשות שנכשלו בריצה קודמת), מהחדש לישן. רק כשבשבועיים האחרונים
+      // יש מקטע שהנסיעות לא עוברות בו נמשכים גם הימים הישנים — הם קובעים ממתי ("4 שבועות רצופים")
+      let need = dates.slice(-DEPTH_DAYS).reverse().filter((d) => c.days[d] == null), older = false;
+      for (let qi = 0; ; qi++) {
+        if (qi >= need.length) {
+          if (older || !suspectLine(c)) break;
+          older = true;
+          need = need.concat(dates.slice(0, -DEPTH_DAYS).reverse().filter((d) => c.days[d] == null));
+          if (qi >= need.length) break;
+        }
+        const d = need[qi];
+        if (Date.now() - t0 > BUDGET_MS || (MAX_FETCH && fetchedDays >= MAX_FETCH)) { saveCache(c); console.error("  תקציב הזמן נגמר"); break outer; }
+        fetchedDays++;
         let rs;
         try { rs = await fetchDay(l, d); } catch (e) { reqFail++; if (reqFail > 30) { saveCache(c); console.error("  יותר מדי כשלים ב-Stride — עוצר:", e.message); break outer; } continue; }
         c.days[d] = rs.length;

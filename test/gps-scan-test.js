@@ -82,5 +82,14 @@ cp.execFileSync("node", [path.join(__dirname, "..", "gps-scan.js"), g, cache, ou
   { env: { ...process.env, GPS_FIXTURE: fx, GPS_TODAY: TODAY, GPS_RIDES_PER_DAY: "2" }, stdio: "inherit" });
 const r2 = JSON.parse(fs.readFileSync(out, "utf8"));
 if (r2.ridesChecked !== r.ridesChecked) { console.log("✗ ריצה חוזרת שינתה את מספר הנסיעות"); ok = false; }
+// ריצה עם תקציב קטן (כמו בלילה, כשיש אלפי קווים): המשיכה הולכת לעומק — קו אחד מקבל את כל
+// השבועיים לפני שעוברים לבא. בגרסה הקודמת כל קו קיבל יום אחד, אף קו לא הגיע לסף והלשונית הייתה 0.
+const cache2 = path.join(dir, "cache-budget");
+fs.rmSync(cache2, { recursive: true, force: true });
+cp.execFileSync("node", [path.join(__dirname, "..", "gps-scan.js"), g, cache2, path.join(dir, "gps-budget.json"), "--history", hist],
+  { env: { ...process.env, GPS_FIXTURE: fx, GPS_TODAY: TODAY, GPS_RIDES_PER_DAY: "2", GPS_MAX_FETCH: "20" }, stdio: "inherit" });
+const deep = fs.readdirSync(cache2).map((f) => Object.keys(JSON.parse(fs.readFileSync(path.join(cache2, f), "utf8")).days).length);
+if (!deep.some((n) => n >= 14)) { console.log("✗ תקציב קטן: אף קו לא קיבל שבועיים ברצף", deep); ok = false; }
+else console.log("✓ תקציב קטן: קו קיבל", Math.max(...deep), "ימים ברצף");
 console.log(ok ? "gps-scan OK (" + out + ")" : "gps-scan FAILED");
 process.exit(ok ? 0 : 1);
