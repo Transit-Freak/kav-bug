@@ -6,7 +6,7 @@
    נוסעים בהם בפועל, לפי נקודות ה-GPS (SIRI) שהסדנא לידע ציבורי שומרת
    ב-Open Bus Stride. כלל כללי, לילי ואוטומטי — אין תיקונים ידניים לקו מסוים.
 
-   לכל מקטע בין שתי תחנות עוקבות: איזה חלק מהנסיעות עבר בו (במרחק ≤40 מ').
+   לכל מקטע בין שתי תחנות עוקבות: איזה חלק מהנסיעות עבר בו (לפי התקדמות ה-GPS לאורך המסלול).
    מקטע שפחות מ-20% מהנסיעות עוברות בו (לפחות 15 נסיעות על פני 14 יום לפחות),
    והנסיעות עוקפות אותו בדרך קצרה יותר — מועמד. ואז ההכרעה:
      "חשד לקידוד מיותר"   — לא נסעו בו אף פעם בחלון הנצפה, 4 שבועות ויותר;
@@ -86,16 +86,6 @@ function distToPoly(p, poly) {
   return best;
 }
 function polyLen(poly) { let s = 0; for (let i = 1; i < poly.length; i++) s += hav(poly[i - 1], poly[i]); return s; }
-// דגימה כל ~step מ' לאורך קו
-function resample(poly, step) {
-  const out = [poly[0]];
-  for (let i = 1; i < poly.length; i++) {
-    const a = poly[i - 1], b = poly[i], d = hav(a, b), n = Math.floor(d / step);
-    for (let k = 1; k <= n; k++) out.push([a[0] + (b[0] - a[0]) * k * step / d, a[1] + (b[1] - a[1]) * k * step / d]);
-    out.push(b);
-  }
-  return out;
-}
 const r5 = (p) => [+p[0].toFixed(5), +p[1].toFixed(5)];
 
 // polyline מקודד (Google) — דחיסה למטמון
@@ -233,53 +223,124 @@ function sections(line) {
     for (let i = from; i < sh.length; i++) { const d = hav([s.lat, s.lng], sh[i]); if (d < bd) { bd = d; bi = i; } if (d > bd + 3000 && bd < 200) break; }
     idx.push(bi); from = bi;
   }
+  const cum = [0];
+  for (let i = 1; i < sh.length; i++) cum.push(cum[i - 1] + hav(sh[i - 1], sh[i]));
   const secs = [];
   for (let k = 1; k < idx.length; k++) {
     const poly = sh.slice(idx[k - 1], idx[k] + 1);
-    secs.push(poly.length >= 2 ? poly : [[line.stops[k - 1].lat, line.stops[k - 1].lng], [line.stops[k].lat, line.stops[k].lng]]);
+    const sec = poly.length >= 2 ? poly : [[line.stops[k - 1].lat, line.stops[k - 1].lng], [line.stops[k].lat, line.stops[k].lng]];
+    // a,b: מטרים מתחילת ה-shape. מקטע שהתחנות שלו נפלו על אותה נקודה (a=b) לא נבדק.
+    sec.a = cum[idx[k - 1]]; sec.b = cum[idx[k]];
+    secs.push(sec);
   }
+  secs.shape = sh; secs.cum = cum;
   return secs;
 }
 
 // ---------------------------------------------------------------- נסיעה → מקטעים
-// מקטע נספר רק אם יש תצפיות בשני קצותיו ורצף זמנים תקין ביניהן.
-// "?" פירושו שאין מספיק מידע; הוא אינו נכלל במכנה של אחוז המעבר.
+// גרסה 3 (14.10). ב-Stride יש נקודת GPS כל ~220 מ' (חציון, נמדד על המטמון). גרסה 2 דרשה נקודה
+// עד 100 מ' משתי התחנות של כל מקטע — ברוב המקטעים אין כזו, הם יצאו "?", ו-"?" נספר נגד הנסיעה:
+// 97% מהנסיעות נזרקו, לאף קו לא היו 15 נסיעות, והלשונית הציגה 0. וגם הקו הישר בין שתי נקודות
+// רחוקות לא צמוד ל-shape בעיקול, כך שמקטעים שנסעו בהם סומנו "0".
+//
+// עכשיו כל נקודה מוטלת על ה-shape (כמה מטרים מתחילתו), ושתי נקודות עוקבות מכריעות על מה שביניהן:
+//   שתיהן על המסלול וההתקדמות לאורכו מתאימה לדרך שנסעו → נסעו בקטע ("1")
+//   ההתקדמות לאורך המסלול ארוכה בהרבה מהדרך בפועל (דילגו על לולאה) → לא נסעו ("0")
+//   באמצע יש נקודה רחוקה מהמסלול (יצאו ממנו) → לא נסעו בקטע שבין היציאה לחזרה ("0")
+//   חור בזמן, קפיצת מיקום או נסיעה לאחור → אין מידע ("?"), ולא נספר לשום צד
 // כל נקודה שומרת זמן. אין חיבור על פני אובדן קליטה או קפיצת מיקום.
+const ON_M = 60;            // נקודה "על המסלול": עד 60 מ' מה-shape
+const OFF_M = 120;          // נקודה "מחוץ למסלול": יותר מ-120 מ' מכל חלק שלו
+const BACK_M = 150;         // רעש מותר לאחור לאורך המסלול
+const SHORT_EXTRA_M = 250;  // קיצור: המסלול ארוך מהדרך בפועל ב-250 מ' לפחות…
+const SHORT_RATIO = 1.5;    // …ופי 1.5 לפחות
+const MAX_ALONG_MPS = 33;   // התקדמות לאורך המסלול מהר מ-120 קמ"ש — נסעו בדרך אחרת
+const EDGE_M = 40;          // סובלנות בקצות המקטע (מיקום התחנה על ה-shape)
 function validLink(a, b) {
   const dt = b[2] - a[2];
   return Number.isFinite(dt) && dt > 0 && dt <= MAX_GAP_MS && hav(a, b) / (dt / 1000) <= MAX_SPEED_MPS;
 }
-function sectionWindow(sec, pts) {
-  const a = sec[0], b = sec[sec.length - 1];
-  let best = null;
-  for (let i = 0; i < pts.length - 1; i++) {
-    if (hav(pts[i], a) > 100) continue;
-    for (let j = i + 1; j < pts.length; j++) {
-      if (!validLink(pts[j - 1], pts[j])) break;
-      if (hav(pts[j], b) <= 100) {
-        const score = hav(pts[i], a) + hav(pts[j], b);
-        if (!best || score < best.score) best = { i, j, score };
-        break;
+// כל ההטלות של נקודה על ה-shape: [מטרים מתחילתו, מרחק מהנקודה]
+function projections(p, sh, cum) {
+  const lat0 = p[0], P = xy(p, lat0), out = [];
+  for (let i = 0; i < sh.length - 1; i++) {
+    const A = xy(sh[i], lat0), B = xy(sh[i + 1], lat0);
+    const dx = B[0] - A[0], dy = B[1] - A[1], L2 = dx * dx + dy * dy;
+    let t = L2 ? ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / L2 : 0; t = Math.max(0, Math.min(1, t));
+    const d = Math.hypot(P[0] - A[0] - t * dx, P[1] - A[1] - t * dy);
+    if (d <= OFF_M) out.push([cum[i] + t * (cum[i + 1] - cum[i]), d]);
+  }
+  return out;
+}
+// shape שעובר באותו מקום פעמיים (לולאה, הלוך-חזור) נותן כמה הטלות. בוחרים את המעבר הראשון שלא
+// מאחורי הנקודה הקודמת, ובתוכו את ההטלה הקרובה. כך נקודה בצומת שלפני לולאה נקשרת לכניסה אליה,
+// והנקודה שאחרי הצומת — ליציאה ממנה, והדילוג נראה כהתקדמות ארוכה מדי.
+function locate(p, sh, cum, prev) {
+  const all = projections(p, sh, cum);
+  if (!all.length) return { off: true };
+  const on = all.filter((x) => x[1] <= ON_M && x[0] >= prev - BACK_M).sort((x, y) => x[0] - y[0]);
+  if (!on.length) return null; // קרובה למסלול אבל לא על המעבר הבא — לא מכריעה
+  let best = on[0];
+  for (const x of on) { if (x[0] - on[0][0] > 2 * ON_M + 50) break; if (x[1] < best[1]) best = x; }
+  return { s: best[0] };
+}
+function shapeAt(secs, s) {
+  const sh = secs.shape, cum = secs.cum;
+  let i = 0; while (i < cum.length - 2 && cum[i + 1] < s) i++;
+  const L = cum[i + 1] - cum[i], t = L ? Math.max(0, Math.min(1, (s - cum[i]) / L)) : 0;
+  return r5([sh[i][0] + t * (sh[i + 1][0] - sh[i][0]), sh[i][1] + t * (sh[i + 1][1] - sh[i][1])]);
+}
+const covered = (iv, a, b) => { let m = 0; for (const [x, y] of iv) m += Math.max(0, Math.min(b, y) - Math.max(a, x)); return m; };
+// מחזיר {bits, alt}: bits — "1"/"0"/"?" לכל מקטע; alt — לכל רצף של "0", הדרך שנסעו בפועל במקומו
+function evalRide(secs, pts) {
+  const sh = secs.shape, cum = secs.cum;
+  const drive = [], skip = [], seq = [];
+  let last = null, lastOn = null, offSeen = false, broken = false, prev = -Infinity;
+  for (let k = 0; k < pts.length; k++) {
+    const p = pts[k];
+    if (last && !validLink(last, p)) broken = true;
+    last = p;
+    const loc = locate(p, sh, cum, prev);
+    if (!loc) continue;
+    if (loc.off) { if (lastOn) offSeen = true; continue; }
+    const cur = { s: loc.s, k, p };
+    if (lastOn && !broken && cur.s > lastOn.s) {
+      const ds = cur.s - lastOn.s, e = hav(lastOn.p, p), dt = (p[2] - lastOn.p[2]) / 1000;
+      const shortcut = offSeen || (ds - e > SHORT_EXTRA_M && ds > SHORT_RATIO * e) || ds / dt > MAX_ALONG_MPS;
+      if (!shortcut) drive.push([lastOn.s, cur.s]);
+      else {
+        // מה שנסעו בפועל בין שתי הנקודות (קו ישר דרך הנקודות שבאמצע). חלקי המסלול שצמודים אליו —
+        // נסעו בהם; רק מה שרחוק ממנו לא. בלי זה גם הקטע הישר שלפני הלולאה ואחריה נספר כדילוג.
+        const path = pts.slice(lastOn.k, k + 1);
+        let runS = lastOn.s, runNear = true;
+        for (let x = lastOn.s; ; x = Math.min(cur.s, x + 25)) {
+          const near = distToPoly(shapeAt(secs, x), path) <= ON_M;
+          if (near !== runNear || x >= cur.s) { (runNear ? drive : skip).push([runS, x]); runS = x; runNear = near; }
+          if (x >= cur.s) break;
+        }
       }
     }
+    if (!lastOn || cur.s >= lastOn.s - BACK_M) { lastOn = cur; prev = Math.max(prev, cur.s); }
+    offSeen = false; broken = false;
+    seq.push(cur);
   }
-  return best;
-}
-function evalRide(secs, pts) {
-  return secs.map((sec) => {
-    const win = sectionWindow(sec, pts);
-    if (!win) return "?"; // לא נצפה כל המקטע: לא נחשב דילוג
-    const observed = pts.slice(win.i, win.j + 1);
-    const samp = resample(sec, 25);
-    const near = samp.filter((p) => distToPoly(p, observed) <= NEAR_M).length;
-    return near / samp.length >= 0.8 ? 1 : 0;
+  const bits = secs.map((sec) => {
+    const len = sec.b - sec.a;
+    if (!(len > 2 * EDGE_M)) return "?";
+    if (covered(skip, sec.a, sec.b) >= 0.5 * len) return 0;
+    return covered(drive, sec.a + EDGE_M, sec.b - EDGE_M) >= 0.9 * (len - 2 * EDGE_M) ? 1 : "?";
   });
-}
-function altPath(secs, i, j, pts) {
-  const sec = [].concat(...secs.slice(i, j + 1).map((p, k) => k ? p.slice(1) : p));
-  const win = sectionWindow(sec, pts);
-  if (!win) return null;
-  return [sec[0]].concat(pts.slice(win.i, win.j + 1)).concat([sec[sec.length - 1]]).map(r5);
+  const alt = {};
+  for (let i = 0; i < bits.length; i++) {
+    if (bits[i] !== 0) continue;
+    let j = i; while (j + 1 < bits.length && bits[j + 1] === 0) j++;
+    const A = secs[i].a, B = secs[j].b;
+    // הקטע שעליו דילגו: מהנקודה האחרונה לפני הרצף עד הראשונה אחריו, ובין לבין מה שנמדד
+    const from = seq.filter((x) => x.s <= A + EDGE_M).pop(), to = from && seq.find((x) => x.k > from.k && x.s >= B - EDGE_M);
+    if (from && to) alt[i + ":" + j] = [shapeAt(secs, A)].concat(pts.slice(from.k + 1, to.k).map(r5)).concat([shapeAt(secs, B)]);
+    i = j;
+  }
+  return { bits, alt };
 }
 
 // ---------------------------------------------------------------- Stride
@@ -426,10 +487,10 @@ function analyzeLine(line, secs, cache) {
   console.error("  קווי אוטובוס עם shape:", lines.length);
   const byRid = new Map(lines.map((l) => [l.rid, l]));
   const secsOf = new Map(), sigOf = new Map();
-  const getSecs = (l) => { if (!secsOf.has(l.rid)) { const s = sections(l); secsOf.set(l.rid, s); sigOf.set(l.rid, hashStr("gps-v2|" + encPoly(l.shape) + "|" + l.stops.map((x) => x.id).join(","))); } return secsOf.get(l.rid); };
+  const getSecs = (l) => { if (!secsOf.has(l.rid)) { const s = sections(l); secsOf.set(l.rid, s); sigOf.set(l.rid, hashStr("gps-v3|" + encPoly(l.shape) + "|" + l.stops.map((x) => x.id).join(","))); } return secsOf.get(l.rid); };
 
   // ---- משיכה ----
-  let fetched = 0, reqFail = 0;
+  let fetched = 0, reqFail = 0, rejected = 0;
   if (!OFFLINE) {
     // שילוב קווים חדשים ועדכון הקווים שהמידע שלהם הכי ישן
     const cached = new Set(fs.readdirSync(cacheDir).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)));
@@ -469,30 +530,25 @@ function analyzeLine(line, secs, cache) {
         c.days[d] = rs.length;
         for (const r of rs) {
           if (r.points.length < 5) continue;
-          const bits = evalRide(secs, r.points);
-          const drivenFrac = bits.filter((b) => b === 1).length / bits.length;
-          if (drivenFrac < 0.5) continue; // נסיעה חלקית / GPS חסר — לא נספרת
+          const { bits, alt } = evalRide(secs, r.points);
+          // "?" לא נספר לשום צד. נזרקת רק נסיעה שכמעט אין עליה מידע (GPS חסר / נסיעה חלקית),
+          // או שברוב מה שנמדד לא נסעה במסלול (כנראה חלופה אחרת של הקו)
+          const known = bits.filter((b) => b !== "?").length, drove = bits.filter((b) => b === 1).length;
+          if (known < Math.max(3, 0.3 * bits.length) || drove < 0.5 * known) { rejected++; continue; }
           if (c.rides.some((x) => x.id === String(r.id))) continue;
           c.rides.push({ id: String(r.id), d, b: bits.join("") });
           fetched++;
-          for (let i = 0; i < bits.length; i++) {
-            if (bits[i] !== 0) continue;
-            let j = i; while (j + 1 < bits.length && bits[j + 1] === 0) j++;
-            const ap = altPath(secs, i, j, r.points);
-            if (ap) {
-              const key = i + ":" + j;
-              if (!c.alt[key]) c.alt[key] = [];
-              c.alt[key].push({ d, p: encPoly(ap) });
-              c.alt[key] = c.alt[key].filter((x) => x.d >= addDays(TODAY, -DAYS)).slice(-100);
-            }
-            i = j;
+          for (const [key, ap] of Object.entries(alt)) {
+            if (!c.alt[key]) c.alt[key] = [];
+            c.alt[key].push({ d, p: encPoly(ap) });
+            c.alt[key] = c.alt[key].filter((x) => x.d >= addDays(TODAY, -DAYS)).slice(-100);
           }
         }
       }
       saveCache(c);
     }
   }
-  console.error("  נסיעות חדשות:", fetched, "| כשלי בקשה:", reqFail);
+  console.error("  נסיעות חדשות:", fetched, "| נזרקו (אין מספיק מידע / חלופה אחרת):", rejected, "| כשלי בקשה:", reqFail);
 
   // ---- ניתוח ----
   const cands = [];
@@ -542,7 +598,7 @@ function analyzeLine(line, secs, cache) {
       firstDate: c.firstDate, lastDate: c.lastDate, verdict, reason,
     };
   }).sort((a, b) => (a.verdict === b.verdict ? b.wasteDayKm - a.wasteDayKm : a.verdict === "חשד לקידוד מיותר" ? -1 : 1));
-  const report = { generatedAt: new Date().toISOString(), today: TODAY, methodVersion: 2, totalLines: allLines.length, ambiguousLines, linesChecked, ridesChecked, requestFailures: reqFail, totalIssues: issues.length,
+  const report = { generatedAt: new Date().toISOString(), today: TODAY, methodVersion: 3, totalLines: allLines.length, ambiguousLines, linesChecked, ridesChecked, requestFailures: reqFail, totalIssues: issues.length,
     byVerdict: issues.reduce((m, i) => ((m[i.verdict] = (m[i.verdict] || 0) + 1), m), {}), issues };
   fs.writeFileSync(outPath, JSON.stringify(report));
   console.error("נכתב:", outPath, "| קווים עם GPS:", linesChecked, "| נסיעות:", ridesChecked, "| ממצאים:", issues.length, JSON.stringify(report.byVerdict), "|", Math.round((Date.now() - t0) / 1000) + "s");

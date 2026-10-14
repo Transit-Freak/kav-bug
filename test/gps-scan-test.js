@@ -7,10 +7,19 @@
 // שימוש: node test/gps-scan-test.js [out-dir]
 "use strict";
 const fs = require("fs"), path = require("path"), os = require("os"), cp = require("child_process");
-const dir = process.argv[2] || fs.mkdtempSync(path.join(os.tmpdir(), "gpsscan-"));
+const root = process.argv[2] || fs.mkdtempSync(path.join(os.tmpdir(), "gpsscan-"));
+// שתי צפיפויות GPS: 70 מ' בין נקודות, ו-230 מ' — מה שיש באמת ב-Stride (חציון 220 מ' בין נקודות,
+// נמדד ב-14.10 על 4,142 זוגות במטמון). הבדיקה הקודמת דגמה כל 47 מ', ולכן לא תפסה שבנתונים
+// האמיתיים 97% מהנסיעות נזרקו והלשונית הציגה 0.
+let ok = true;
+for (const STEP of [70, 230]) {
+console.log("— נקודת GPS כל", STEP, "מ'");
+const dir = path.join(root, "step" + STEP);
 const g = path.join(dir, "gtfs"), fx = path.join(dir, "fx"), cache = path.join(dir, "cache"), hist = path.join(dir, "hist");
 for (const d of [g, fx, cache, hist]) fs.mkdirSync(d, { recursive: true });
 const TODAY = "2026-09-29";
+const R = 6371000, T = (x) => x * Math.PI / 180;
+const hav = (a, b) => 2 * R * Math.asin(Math.sqrt(Math.sin(T(b[0] - a[0]) / 2) ** 2 + Math.cos(T(a[0])) * Math.cos(T(b[0])) * Math.sin(T(b[1] - a[1]) / 2) ** 2));
 const addDays = (d, n) => new Date(Date.parse(d) + n * 86400000).toISOString().slice(0, 10);
 const lines = [
   { rid: "1", num: "10", lat: 32.00, mode: "never", days: 35 },
@@ -24,12 +33,13 @@ const lines = [
 ];
 const stopsTxt = ["stop_id,stop_name,stop_lat,stop_lon,stop_desc"], routes = ["route_id,agency_id,route_short_name,route_long_name,route_desc,route_type"];
 const trips = ["route_id,service_id,trip_id,shape_id"], st = ["trip_id,arrival_time,departure_time,stop_id,stop_sequence"], shapes = ["shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence"];
-const LNG = [34.800, 34.805, 34.810, 34.815, 34.820];
+// תחנה כל ~235 מ', על המדרכה (22 מ' מקו ה-shape) — כמו ברחוב אמיתי
+const LNG = [34.800, 34.8025, 34.805, 34.810, 34.8125, 34.815, 34.8175, 34.820];
 for (const L of lines) {
-  LNG.forEach((x, k) => stopsTxt.push(`${L.rid}${k},תחנה ${L.num}-${k + 1},${L.lat},${x},רחוב: א עיר: בדיקה רציף:`));
+  LNG.forEach((x, k) => stopsTxt.push(`${L.rid}${k},תחנה ${L.num}-${k + 1},${(L.lat + 0.0002).toFixed(6)},${x},רחוב: א עיר: בדיקה רציף:`));
   routes.push(`${L.rid},1,${L.num},א<->ב-1#,${L.rid}000-1-0,3`);
   trips.push(`${L.rid},s1,t${L.rid},sh${L.rid}`);
-  LNG.forEach((x, k) => st.push(`t${L.rid},0${6 + k}:00:00,0${6 + k}:00:00,${L.rid}${k},${k + 1}`));
+  LNG.forEach((x, k) => st.push(`t${L.rid},${String(6 + k).padStart(2, "0")}:00:00,${String(6 + k).padStart(2, "0")}:00:00,${L.rid}${k},${k + 1}`));
   const pts = [];
   for (let x = 34.800; x <= 34.8051; x += 0.001) pts.push([L.lat, x]);
   pts.push([L.lat + 0.001, 34.8055], [L.lat + 0.004, 34.806], [L.lat + 0.004, 34.8075], [L.lat + 0.004, 34.809], [L.lat + 0.001, 34.8095]);
@@ -42,15 +52,22 @@ for (const L of lines) {
     const date = addDays(TODAY, -d);
     const driveLoop = L.mode === "stopped" && d > 20;
     const src = driveLoop ? pts : [];
-    if (!driveLoop) for (let x = 34.800; x <= 34.8201; x += 0.0015) src.push([L.lat, x]);
-    // נקודת GPS כל ~140 מ' + רעש של כמה מטרים
-    const gps = [];
-    for (let i = 0; i < src.length; i++) {
-      const a = src[i], b = src[i + 1] || a;
-      for (let t = 0; t < 1; t += 0.5) gps.push([a[0] + (b[0] - a[0]) * t + (0.5 - 0.5) * 0.00008, a[1] + (b[1] - a[1]) * t + (0.5 - 0.5) * 0.00008]);
+    if (!driveLoop) src.push([L.lat, 34.800], [L.lat, 34.820]);
+    // נקודת GPS כל STEP מ' לאורך הדרך שנסעה, בפאזה שמשתנה מיום ליום (הנקודות לא נופלות על התחנות),
+    // עם רעש של עד 13 מ' ו-6 מ'/ש'. "gap": אין נקודות לאורך הלולאה וחור של 5 דקות — אולי נסעו בה.
+    // "jump": זמנים צפופים מדי.
+    const gps = [], phase = (d * 53) % STEP;
+    let acc = -phase;
+    for (let i = 1; i < src.length; i++) {
+      const a = src[i - 1], b = src[i], len = hav(a, b);
+      for (; acc <= len; acc += STEP) if (acc >= 0) { const t = acc / len; gps.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); }
+      acc -= len;
     }
+    gps.forEach((p, i) => { p[0] += Math.sin(i * 7.3 + d) * 0.00012; p[1] += Math.cos(i * 5.1 + d) * 0.00012; });
+    if (L.mode === "gap") for (let i = gps.length - 1; i >= 0; i--) if (gps[i][1] > 34.8052 && gps[i][1] < 34.8098) gps.splice(i, 1);
     const base = Date.parse(date + "T06:00:00Z");
-    const timed = gps.map((p, i) => [...p, base + i * 15000 + (L.mode === "gap" && i > 9 ? 300000 : 0)]);
+    let t = base;
+    const timed = gps.map((p, i) => { if (i) t += hav(gps[i - 1], p) / 6 * 1000 + (L.mode === "gap" && gps[i - 1][1] < 34.8052 && p[1] >= 34.8098 ? 300000 : 0); return [...p, t]; });
     if (L.mode === "jump") timed.forEach((p, i) => { p[2] = base + i; });
     rides.push({ id: L.rid + d, date, points: timed });
     rides.push({ id: L.rid + d + "b", date, points: timed }); // שתי נסיעות ביום — 20 נסיעות ב-20 יום
@@ -71,7 +88,6 @@ cp.execFileSync("node", [path.join(__dirname, "..", "gps-scan.js"), g, cache, ou
 const r = JSON.parse(fs.readFileSync(out, "utf8"));
 const v = (n) => (r.issues.find((i) => i.line === n) || {}).verdict;
 const expect = { 10: "חשד לקידוד מיותר", 20: "כנראה עבודות תשתית", 30: "כנראה עבודות תשתית", 40: "סיבה לא ידועה", 50: "כנראה עבודות תשתית" };
-let ok = true;
 for (const [n, want] of Object.entries(expect)) { const got = v(n); console.log((got === want ? "✓" : "✗"), "קו", n, got, "|", (r.issues.find((i) => i.line === n) || {}).reason); if (got !== want) ok = false; }
 if (r.issues.length !== 5) { console.log("✗ מספר ממצאים", r.issues.length); ok = false; }
 for (const n of ["60", "70", "80"]) if (r.issues.some((i) => i.line === n)) { console.log("✗ חור GPS זוהה כקיצור", n); ok = false; }
@@ -91,5 +107,6 @@ cp.execFileSync("node", [path.join(__dirname, "..", "gps-scan.js"), g, cache2, p
 const deep = fs.readdirSync(cache2).map((f) => Object.keys(JSON.parse(fs.readFileSync(path.join(cache2, f), "utf8")).days).length);
 if (!deep.some((n) => n >= 14)) { console.log("✗ תקציב קטן: אף קו לא קיבל שבועיים ברצף", deep); ok = false; }
 else console.log("✓ תקציב קטן: קו קיבל", Math.max(...deep), "ימים ברצף");
-console.log(ok ? "gps-scan OK (" + out + ")" : "gps-scan FAILED");
+}
+console.log(ok ? "gps-scan OK (" + root + ")" : "gps-scan FAILED");
 process.exit(ok ? 0 : 1);
