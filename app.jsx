@@ -985,7 +985,7 @@ function KavBug() {
         return;
       }
       const ln = activeIdx !== null ? city.lines[activeIdx] : null;
-      if (ln) map.fitBounds(L.latLngBounds(ln.stops.map((s) => [s.lat, s.lng])), { padding: [80, 80], maxZoom: 14 });
+      if (ln && ln.stops.length) map.fitBounds(L.latLngBounds(ln.stops.map((s) => [s.lat, s.lng])), { padding: [80, 80], maxZoom: 14 });
       else map.setView([city.center.lat, city.center.lng], city.zoom || 12);
     };
     frame();
@@ -1421,4 +1421,4 @@ ${engineFacts}
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<KavBug />);
+ReactDOM.createRoot(document.getElementById("root")).render(<RootSafe><KavBug /></RootSafe>);
