@@ -673,8 +673,10 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
   const vClass = (v) => v === GPS_CODING ? "real" : v === GPS_WORKS ? "doubt" : v === "אמיתי" ? "real" : v === "רעש" ? "noise" : v === "ספק" ? "doubt" : v === "כיסוי לגיטימי" ? "cover" : v === MAP_DOUBT ? "mapdbt" : "incomp";
   // מגמה ארצית: משווה את הרשומה האחרונה ב-history.json לזו שלפניה. רק בתצוגת
   // "כל הארץ" (לא כשמסוננים לעיר — history הוא סיכום ארצי בלבד).
-  const trend = (tab === "lines" && !city && history && history.length >= 2) ? (() => {
-    const last = history[history.length - 1], prev = history[history.length - 2];
+  // רשומה פגומה ב-history.json (null או בלי תאריך) לא מפילה את דף הבית — כמו בגרף שליד
+  const histOk = Array.isArray(history) ? history.filter((h) => h && h.date) : [];
+  const trend = (tab === "lines" && !city && histOk.length >= 2) ? (() => {
+    const last = histOk[histOk.length - 1], prev = histOk[histOk.length - 2];
     return { last, prev, dReal: last.realCount - prev.realCount, dWaste: Math.round((last.totalWasteDayKm || 0) - (prev.totalWasteDayKm || 0)) };
   })() : null;
   const trendArrow = (d) => d > 0 ? "▲" : d < 0 ? "▼" : "–";
@@ -2116,4 +2118,19 @@ function Panel({ city, activeIdx, setActiveIdx, aiReview }) {
   );
 }
 
-Object.assign(window, { TopBar, Panel, ReportPanel, Stats, ProblemCard, UploadModal, InfoModal, CountryModal, IssueReportModal, CITY_PRESETS, fmt, SEV_LABEL, KAVBUG_VERSION, runAIVerdict, buildVerdictPrompt, dirLabel, aiComplete, aiAvailable, fallbackVerdict, stripArabic });
+// רשת ביטחון לכל הדף (שלמה 18.10): שגיאה ברכיב אחד לא משאירה דף ריק
+class RootSafe extends React.Component {
+  constructor(p) { super(p); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  componentDidCatch(err, info) { console.error("RootSafe:", err, info && info.componentStack); }
+  render() {
+    if (!this.state.err) return this.props.children;
+    return <div dir="rtl" style={{ maxWidth: 520, margin: "15vh auto", padding: "24px 20px", textAlign: "center", font: "16px/1.6 system-ui, sans-serif" }}>
+      <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>משהו השתבש בדף</div>
+      <div style={{ opacity: .75, marginBottom: 16 }}>רענון של הדף בדרך כלל פותר את זה.</div>
+      <button type="button" onClick={() => location.reload()} style={{ font: "inherit", fontWeight: 700, padding: "10px 22px", borderRadius: 12, border: 0, background: "#0f172a", color: "#fff", cursor: "pointer" }}>רענון</button>
+    </div>;
+  }
+}
+
+Object.assign(window, { RootSafe, TopBar, Panel, ReportPanel, Stats, ProblemCard, UploadModal, InfoModal, CountryModal, IssueReportModal, CITY_PRESETS, fmt, SEV_LABEL, KAVBUG_VERSION, runAIVerdict, buildVerdictPrompt, dirLabel, aiComplete, aiAvailable, fallbackVerdict, stripArabic });
