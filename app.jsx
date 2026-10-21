@@ -375,6 +375,7 @@ function CountryIssuePanel({ issue, onBack, onClose }) {
             : null}
         </div>
         {issue.reason ? <p className="ci-reason">{issue.reason}</p> : null}
+        {isGps && GPS_EVIDENCE[issue.evidence] ? <p className="ci-reason">{GPS_EVIDENCE[issue.evidence]}</p> : null}
         {isGps ? (
           <p className="ci-hint">המקטע מסומן על המפה: <b style={{ color: "#ef8a17" }}>כתום</b> = המסלול המתוכנן שכמעט לא נוסעים בו · <b style={{ color: "#1f9d57" }}>ירוק</b> = הדרך שבה האוטובוסים נוסעים בפועל (GPS) · <b style={{ color: "#2563eb" }}>כחול</b> = מסלול הקו.{issue.since ? " נצפה מ-" + new Date(issue.since).toLocaleDateString("he-IL") + "." : ""}</p>
         ) : isNav ? (

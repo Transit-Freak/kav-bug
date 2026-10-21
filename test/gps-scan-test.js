@@ -107,6 +107,18 @@ cp.execFileSync("node", [path.join(__dirname, "..", "gps-scan.js"), g, cache2, p
 const deep = fs.readdirSync(cache2).map((f) => Object.keys(JSON.parse(fs.readFileSync(path.join(cache2, f), "utf8")).days).length);
 if (!deep.some((n) => n >= 14)) { console.log("✗ תקציב קטן: אף קו לא קיבל שבועיים ברצף", deep); ok = false; }
 else console.log("✓ תקציב קטן: קו קיבל", Math.max(...deep), "ימים ברצף");
+// סריקה רחבה (GPS_SIRI): כל הקווים מכל הימים בריצה אחת. אותם ממצאים, ובמטמון רק הקווים החשודים
+const cache3 = path.join(dir, "cache-siri"), out3 = path.join(dir, "gps-siri.json");
+fs.rmSync(cache3, { recursive: true, force: true });
+const dates = []; for (let k = 40; k >= 1; k--) dates.push(addDays(TODAY, -k));
+cp.execFileSync("node", [path.join(__dirname, "..", "gps-scan.js"), g, cache3, out3, "--history", hist],
+  { env: { ...process.env, GPS_SIRI: fx, GPS_SIRI_DATES: dates.join(","), GPS_TODAY: TODAY }, stdio: "inherit" });
+const r3 = JSON.parse(fs.readFileSync(out3, "utf8"));
+for (const [n, want] of Object.entries(expect)) { const got = (r3.issues.find((i) => i.line === n) || {}).verdict; if (got !== want) { console.log("✗ סריקה רחבה: קו", n, got); ok = false; } }
+const kept = fs.readdirSync(cache3).filter((f) => !f.startsWith("_")).map((f) => JSON.parse(fs.readFileSync(path.join(cache3, f), "utf8")).rid).sort();
+if (kept.includes("6") || kept.length !== 5) { console.log("✗ סריקה רחבה: המטמון שמר קווים לא חשודים", kept); ok = false; }
+else if (!(r3.linesChecked > 0 && r3.source === "siri")) { console.log("✗ סריקה רחבה: אין סיכום כיסוי"); ok = false; }
+else console.log("✓ סריקה רחבה: אותם ממצאים, במטמון רק", kept.length, "קווים חשודים");
 }
 console.log(ok ? "gps-scan OK (" + root + ")" : "gps-scan FAILED");
 process.exit(ok ? 0 : 1);
