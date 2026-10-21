@@ -25,6 +25,8 @@
    משתני סביבה:
      STRIDE_URL           (ברירת מחדל https://open-bus-stride-api.hasadna.org.il)
      GPS_FIXTURE=<dir>    במקום Stride: <dir>/<route_id>.json = [{id,date,points:[[lat,lon],…]}]
+     GPS_SIRI=<dir>       סריקה רחבה: אותו מבנה, מכל הקווים, מקבצי הדקה של דאטאבוס ב-S3 (gps-siri.py)
+     GPS_SIRI_DATES       הימים שבתיקייה (YYYY-MM-DD,…)
      GPS_OFFLINE=1        בלי משיכה בכלל — ניתוח המטמון בלבד
      GPS_LINES_PER_NIGHT  (60) קווים חדשים לדגימה בכל לילה
      GPS_DAYS             (35) כמה ימים אחורה לדגום
@@ -48,6 +50,8 @@ if (!gtfsPath || !cacheDir || !outPath) {
 const env = process.env;
 const STRIDE = (env.STRIDE_URL || "https://open-bus-stride-api.hasadna.org.il").replace(/\/$/, "");
 const FIXTURE = env.GPS_FIXTURE || "";
+const SIRI = env.GPS_SIRI || "";
+const SIRI_DATES = (env.GPS_SIRI_DATES || "").split(",").filter(Boolean);
 const OFFLINE = env.GPS_OFFLINE === "1";
 const LINES_PER_NIGHT = +(env.GPS_LINES_PER_NIGHT || 60);
 const DAYS = +(env.GPS_DAYS || 35);
@@ -255,6 +259,7 @@ const BACK_M = 150;         // רעש מותר לאחור לאורך המסלו�
 const SHORT_EXTRA_M = 250;  // קיצור: המסלול ארוך מהדרך בפועל ב-250 מ' לפחות…
 const SHORT_RATIO = 1.5;    // …ופי 1.5 לפחות
 const MAX_ALONG_MPS = 33;   // התקדמות לאורך המסלול מהר מ-120 קמ"ש — נסעו בדרך אחרת
+const FEASIBLE_MPS = 16;    // קיצור לפי הצורה בלבד: רק אם המסלול המתוכנן דורש יותר מ-58 קמ"ש בזמן שעבר
 const EDGE_M = 40;          // סובלנות בקצות המקטע (מיקום התחנה על ה-shape)
 function validLink(a, b) {
   const dt = b[2] - a[2];
@@ -306,8 +311,12 @@ function evalRide(secs, pts) {
     const cur = { s: loc.s, k, p };
     if (lastOn && !broken && cur.s > lastOn.s) {
       const ds = cur.s - lastOn.s, e = hav(lastOn.p, p), dt = (p[2] - lastOn.p[2]) / 1000;
-      const shortcut = offSeen || (ds - e > SHORT_EXTRA_M && ds > SHORT_RATIO * e) || ds / dt > MAX_ALONG_MPS;
-      if (!shortcut) drive.push([lastOn.s, cur.s]);
+      // גרסה 4 (21.10): נקודה בדקה. שתי נקודות קרובות בקו ישר ורחוקות לאורך לולאה הן לא ראיה לדילוג,
+      // אם בדקה שעברה האוטובוס יכול היה לנסוע את הלולאה. אז אין הכרעה ("?"), לא "נסעו" ולא "דילגו".
+      const geo = ds - e > SHORT_EXTRA_M && ds > SHORT_RATIO * e;
+      const shortcut = offSeen || ds / dt > MAX_ALONG_MPS || (geo && ds / dt > FEASIBLE_MPS);
+      if (geo && !shortcut) { /* אין הכרעה */ }
+      else if (!shortcut) drive.push([lastOn.s, cur.s]);
       else {
         // מה שנסעו בפועל בין שתי הנקודות (קו ישר דרך הנקודות שבאמצע). חלקי המסלול שצמודים אליו —
         // נסעו בהם; רק מה שרחוק ממנו לא. בלי זה גם הקטע הישר שלפני הלולאה ואחריה נספר כדילוג.
@@ -411,7 +420,36 @@ function saveCache(c) {
   fs.writeFileSync(cacheFile(c.rid), JSON.stringify(c));
 }
 
+// סריקה רחבה: נשמרים רק קווים חשודים — יש מקטע שפחות מחצי מהנסיעות הידועות עוברות בו.
+// קו שחזר לנסוע במסלול נמחק מהמטמון, וכך הוא נשאר קטן גם כשכל הקווים נבדקים בכל לילה.
+function keepLine(c) {
+  const rs = c.rides; if (!rs.length) return false;
+  for (let s = 0; s < rs[0].b.length; s++) {
+    let y = 0, k = 0;
+    for (const r of rs) { const b = r.b[s]; if (b === "?") continue; k++; if (b === "1") y++; }
+    if (k >= 2 && y / k < 0.5) return true;
+  }
+  return false;
+}
+const statsFile = () => path.join(cacheDir, "_stats.json");
+
 // ---------------------------------------------------------------- היסטוריית הקו
+// שינוי זמני מוכר (הודעות "הקו המודיע" שנשמרות בהיסטוריית הקו) בטווח התאריכים
+function tempAlerts(rd, from, to) {
+  if (!historyDir || !rd) return [];
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(historyDir, "..", "temp", String(rd).split("-")[0] + ".json"), "utf8"));
+    return (j.ev || []).filter((e) => (e.s || "").slice(0, 10) <= to && (e.e || "9999").slice(0, 10) >= from).map((e) => e.h || e.cl || "");
+  } catch (_e) { return []; }
+}
+// המסלול השתנה בטווח התאריכים (גרסה חדשה בהיסטוריית הקו)
+function routeChanged(rd, from, to) {
+  if (!historyDir || !rd) return false;
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(historyDir, rd.replace(/#/g, "H").replace(/\//g, "_") + ".json"), "utf8"));
+    return (j.versions || []).some((v) => v.d && v.d > from && v.d <= to);
+  } catch (_e) { return false; }
+}
 function tempChanges(rd) {
   if (!historyDir || !rd) return [];
   const p = path.join(historyDir, rd.replace(/#/g, "H").replace(/\//g, "_") + ".json");
@@ -470,7 +508,11 @@ function analyzeLine(line, secs, cache) {
     const segM = polyLen(segPoly), gpsM = gpsRoute ? polyLen(gpsRoute) : null;
     // "הנסיעות לוקחות דרך קצרה יותר" — אחרת זה לא קידוד מיותר (אולי GPS חסר)
     if (gpsM == null || gpsM > segM * 0.95) continue;
-    out.push({ s, e, segPoly, gpsRoute, segM, gpsM, allShare, since, missSpan, drovenBefore, lastDrove,
+    // כמה חזקה הראיה: האם האוטובוס נראה מחוץ למסלול המתוכנן, או שיש רק נקודות לידו, או אף נקודה בקטע
+    let away = 0, inside = 0;
+    for (const x of recentEvidence) { const p = decPoly(x.p).slice(1, -1); if (p.length) inside++; if (p.some((q) => distToPoly(q, segPoly) > ON_M)) away++; }
+    const grade = away >= 0.5 * recentEvidence.length ? "strong" : inside >= 0.5 * recentEvidence.length ? "near" : "weak";
+    out.push({ s, e, segPoly, gpsRoute, segM, gpsM, allShare, evidence: grade, recentFrom, since, missSpan, drovenBefore, lastDrove,
       ridesChecked: eligible.length, evidenceDays: new Set(recentEvidence.map((x) => x.d)).size, firstDate: eligible[0].d, lastDate: eligible[eligible.length - 1].d });
     s = e;
   }
@@ -487,11 +529,59 @@ function analyzeLine(line, secs, cache) {
   console.error("  קווי אוטובוס עם shape:", lines.length);
   const byRid = new Map(lines.map((l) => [l.rid, l]));
   const secsOf = new Map(), sigOf = new Map();
-  const getSecs = (l) => { if (!secsOf.has(l.rid)) { const s = sections(l); secsOf.set(l.rid, s); sigOf.set(l.rid, hashStr("gps-v3|" + encPoly(l.shape) + "|" + l.stops.map((x) => x.id).join(","))); } return secsOf.get(l.rid); };
+  const getSecs = (l) => { if (!secsOf.has(l.rid)) { const s = sections(l); secsOf.set(l.rid, s); sigOf.set(l.rid, hashStr("gps-v4|" + encPoly(l.shape) + "|" + l.stops.map((x) => x.id).join(","))); } return secsOf.get(l.rid); };
 
   // ---- משיכה ----
   let fetched = 0, reqFail = 0, rejected = 0;
-  if (!OFFLINE) {
+  function addRide(c, secs, r, d) {
+    if (r.points.length < 5) return;
+    const { bits, alt } = evalRide(secs, r.points);
+    // "?" לא נספר לשום צד. נזרקת רק נסיעה שכמעט אין עליה מידע (GPS חסר / נסיעה חלקית),
+    // או שברוב מה שנמדד לא נסעה במסלול (כנראה חלופה אחרת של הקו)
+    const known = bits.filter((b) => b !== "?").length, drove = bits.filter((b) => b === 1).length;
+    if (known < Math.max(3, 0.3 * bits.length) || drove < 0.5 * known) { rejected++; return; }
+    if (c.rides.some((x) => x.id === String(r.id))) return;
+    c.rides.push({ id: String(r.id), d, b: bits.join("") });
+    fetched++;
+    for (const [key, ap] of Object.entries(alt)) {
+      if (!c.alt[key]) c.alt[key] = [];
+      c.alt[key].push({ d, p: encPoly(ap) });
+      c.alt[key] = c.alt[key].filter((x) => x.d >= addDays(TODAY, -Math.max(DAYS, PERSIST_DAYS + 7))).slice(-100);
+    }
+  }
+  const stats = (() => { try { return JSON.parse(fs.readFileSync(statsFile(), "utf8")); } catch (_e) { return { days: {} }; } })();
+  if (SIRI) {
+    // סריקה רחבה (21.10): כל הקווים, מכל הנסיעות שנדגמו מקבצי הדקה של דאטאבוס. בלי בקשות ל-Stride.
+    const fx = new Set(fs.readdirSync(SIRI).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)));
+    const day = {}; for (const d of SIRI_DATES) day[d] = { lines: 0, rides: 0 };
+    let kept = 0, dropped = 0;
+    for (const l of lines) {
+      const file = cacheFile(l.rid), had = fs.existsSync(file);
+      if (!fx.has(String(l.rid))) continue;
+      const secs = getSecs(l), c = loadCache(l, sigOf.get(l.rid));
+      const before = fetched, seen = new Set();
+      for (const r of JSON.parse(fs.readFileSync(path.join(SIRI, l.rid + ".json"), "utf8"))) {
+        if (!day[r.date] || c.days[r.date] != null) continue;
+        const n0 = fetched; addRide(c, secs, r, r.date); if (fetched > n0) day[r.date].rides++;
+        seen.add(r.date);
+      }
+      for (const d of seen) { c.days[d] = 1; day[d].lines++; }
+      if (fetched === before && !had) continue;
+      if (keepLine(c)) { saveCache(c); kept++; }
+      else { if (had) fs.unlinkSync(file); dropped++; }
+    }
+    // מטמון של גרסה קודמת (Stride, gps-v3) או של קו שכבר לא קיים — לא תקף
+    for (const f of fs.readdirSync(cacheDir)) {
+      if (!f.endsWith(".json") || f.startsWith("_")) continue;
+      let c; try { c = JSON.parse(fs.readFileSync(path.join(cacheDir, f), "utf8")); } catch (_e) { c = null; }
+      const l = c && byRid.get(c.rid);
+      if (!c || !l || c.sig !== (getSecs(l), sigOf.get(l.rid))) fs.unlinkSync(path.join(cacheDir, f));
+    }
+    for (const d of SIRI_DATES) if (day[d].lines) stats.days[d] = day[d];
+    for (const d of Object.keys(stats.days)) if (d < addDays(TODAY, -KEEP_DAYS)) delete stats.days[d];
+    fs.writeFileSync(statsFile(), JSON.stringify(stats));
+    console.error("  סריקה רחבה:", SIRI_DATES.length, "ימים", SIRI_DATES[0] || "", "| קווים חשודים במטמון:", kept, "| נמחקו:", dropped);
+  } else if (!OFFLINE) {
     // שילוב קווים חדשים ועדכון הקווים שהמידע שלהם הכי ישן
     const cached = new Set(fs.readdirSync(cacheDir).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)));
     const inCache = lines.filter((l) => cached.has(String(l.rid).replace(/[^\w-]/g, "_")));
@@ -528,22 +618,7 @@ function analyzeLine(line, secs, cache) {
         let rs;
         try { rs = await fetchDay(l, d); } catch (e) { reqFail++; if (reqFail > 30) { saveCache(c); console.error("  יותר מדי כשלים ב-Stride — עוצר:", e.message); break outer; } continue; }
         c.days[d] = rs.length;
-        for (const r of rs) {
-          if (r.points.length < 5) continue;
-          const { bits, alt } = evalRide(secs, r.points);
-          // "?" לא נספר לשום צד. נזרקת רק נסיעה שכמעט אין עליה מידע (GPS חסר / נסיעה חלקית),
-          // או שברוב מה שנמדד לא נסעה במסלול (כנראה חלופה אחרת של הקו)
-          const known = bits.filter((b) => b !== "?").length, drove = bits.filter((b) => b === 1).length;
-          if (known < Math.max(3, 0.3 * bits.length) || drove < 0.5 * known) { rejected++; continue; }
-          if (c.rides.some((x) => x.id === String(r.id))) continue;
-          c.rides.push({ id: String(r.id), d, b: bits.join("") });
-          fetched++;
-          for (const [key, ap] of Object.entries(alt)) {
-            if (!c.alt[key]) c.alt[key] = [];
-            c.alt[key].push({ d, p: encPoly(ap) });
-            c.alt[key] = c.alt[key].filter((x) => x.d >= addDays(TODAY, -DAYS)).slice(-100);
-          }
-        }
+        for (const r of rs) addRide(c, secs, r, d);
       }
       saveCache(c);
     }
@@ -572,7 +647,16 @@ function analyzeLine(line, secs, cache) {
     }
   }
   const fmtD = (d) => d.split("-").reverse().join(".");
-  const issues = cands.map((c) => {
+  // לא מתפרסם (21.10): ממצא בלי נקודת GPS מחוץ למסלול או בתוך הקטע (רק השערה ממרחק בין שתי נקודות),
+  // קו עם שינוי זמני מוכר בתקופה שנבדקה, וקו שהמסלול שלו השתנה באמצע התקופה
+  const excluded = { weak: 0, temp: 0, changed: 0 };
+  const shown = cands.filter((c) => {
+    if (c.evidence === "weak") { excluded.weak++; return false; }
+    if (tempAlerts(c.l.rd, c.recentFrom, c.lastDate).length) { excluded.temp++; return false; }
+    if (routeChanged(c.l.rd, c.recentFrom, c.lastDate)) { excluded.changed++; return false; }
+    return true;
+  });
+  const issues = shown.map((c) => {
     const L = c.l, from = L.stops[c.s], to = L.stops[c.e + 1];
     const temps = tempChanges(L.rd).filter((d) => Math.abs(dayDiff(d, c.since)) <= TEMP_WINDOW || (d >= c.firstDate && d <= c.lastDate));
     const pct = Math.round(c.allShare * 100);
@@ -594,11 +678,17 @@ function analyzeLine(line, secs, cache) {
       seg: c.segPoly.map(r5), gpsRoute: c.gpsRoute, lineShape: ctx.map(r5),
       segKm: +(c.segM / 1000).toFixed(3), gpsKm: +(c.gpsM / 1000).toFixed(3), excessKm: +((c.segM - c.gpsM) / 1000).toFixed(3),
       tripsDay: L.tripsDay, wasteDayKm: +(((c.segM - c.gpsM) / 1000) * L.tripsDay).toFixed(1),
-      evidenceDays: c.evidenceDays, confidence: c.evidenceDays >= 7 && c.ridesChecked >= 30 ? "גבוהה" : "בינונית", ridesChecked: c.ridesChecked, share: +c.allShare.toFixed(2), since: c.since,
+      evidenceDays: c.evidenceDays, evidence: c.evidence, confidence: c.evidence === "strong" ? "גבוהה" : "בינונית", ridesChecked: c.ridesChecked, share: +c.allShare.toFixed(2), since: c.since,
       firstDate: c.firstDate, lastDate: c.lastDate, verdict, reason,
     };
   }).sort((a, b) => (a.verdict === b.verdict ? b.wasteDayKm - a.wasteDayKm : a.verdict === "חשד לקידוד מיותר" ? -1 : 1));
-  const report = { generatedAt: new Date().toISOString(), today: TODAY, methodVersion: 3, totalLines: allLines.length, ambiguousLines, linesChecked, ridesChecked, requestFailures: reqFail, totalIssues: issues.length,
+  if (SIRI) {
+    // בסריקה הרחבה המטמון מחזיק רק קווים חשודים — הכיסוי נספר מסיכום הימים
+    const recent = Object.entries(stats.days).filter(([d]) => d >= addDays(TODAY, -MIN_SPAN_DAYS));
+    linesChecked = Math.max(0, ...recent.map(([, v]) => v.lines));
+    ridesChecked = recent.reduce((m, [, v]) => m + v.rides, 0);
+  }
+  const report = { generatedAt: new Date().toISOString(), today: TODAY, methodVersion: 4, source: SIRI ? "siri" : "stride", excluded, totalLines: allLines.length, ambiguousLines, linesChecked, ridesChecked, requestFailures: reqFail, totalIssues: issues.length,
     byVerdict: issues.reduce((m, i) => ((m[i.verdict] = (m[i.verdict] || 0) + 1), m), {}), issues };
   fs.writeFileSync(outPath, JSON.stringify(report));
   console.error("נכתב:", outPath, "| קווים עם GPS:", linesChecked, "| נסיעות:", ridesChecked, "| ממצאים:", issues.length, JSON.stringify(report.byVerdict), "|", Math.round((Date.now() - t0) / 1000) + "s");

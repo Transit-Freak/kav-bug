@@ -529,6 +529,8 @@ function IssueReportModal({ issue, onClose }) {
 // בעיה שנמצאה מול הדרך הקצרה ברכב (OSRM) ולא מול קו אחר
 function isNavIssue(i) { return !!(i && (i._nav || i.type === "ניווט")); }
 function isGpsIssue(i) { return !!(i && i.type === "gps"); }
+// כמה חזקה הראיה לממצא GPS (gps-scan.js, שדה evidence)
+const GPS_EVIDENCE = { strong: "ראיה חזקה: האוטובוסים נראו ב-GPS מחוץ למסלול המתוכנן", near: "ראיה בינונית: נקודות ה-GPS בקטע קרובות למסלול המתוכנן" };
 // הלשונית הפעילה: "lines" (ברירת מחדל) | "nav" (#nav) | "gps" (#gps)
 function countryHashTab() {
   if (window.__kbCountryTab) return window.__kbCountryTab;
@@ -820,6 +822,7 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
                         <td className="seg">{i.rd || i.dir ? <div className="seg-dir" title="כיוון הנסיעה של הקו שבו נמצא המקטע">🧭 {i.rd ? fmtRd(i.rd) : null}{i.rd && i.dir ? <> · </> : null}{i.dir ? fmtDir(i.dir) : null}</div> : null}{i.from} → {i.to}{i.city ? <span className="seg-city" title="העיר של המקטע השגוי"> · 📍 {i.city}</span> : null}{onPick && hasGeo ? <span className="map-ico"> 🗺️</span> : null}
                           {isNav && i.optKm != null ? <div className="nav-km">האוטובוס {fmt(i.optKm + (i.excessKm || 0))} ק"מ · הדרך הקצרה ברכב {fmt(i.optKm)} ק"מ</div> : null}
                           {isGps && i.segKm != null ? <div className="nav-km">מתוכנן {fmt(i.segKm)} ק"מ · בפועל {fmt(i.gpsKm)} ק"מ</div> : null}
+                          {isGps && GPS_EVIDENCE[i.evidence] ? <div className="nav-km">{GPS_EVIDENCE[i.evidence]}</div> : null}
                           {(isNav || isGps) && i.reason ? <div className="nav-reason">{i.reason}</div> : null}</td>
                         <td className="num">{i.excessKm} ק"מ</td>
                         <td className="num waste" title={i.tripsDay ? i.tripsDay + " נסיעות ביום עמוס" : ""}>{i.wasteDayKm != null ? i.wasteDayKm + " ק\"מ" : "—"}</td>
