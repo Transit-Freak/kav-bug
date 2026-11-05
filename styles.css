@@ -188,6 +188,9 @@ html, body {
   text-align: right;
 }
 .suggest button:hover { background: var(--surface-2); }
+/* חיפוש-עיר בדוח הארצי הוא קישור (<a>) — אותו מראה כמו הכפתורים שלידו */
+.suggest a { display: flex; align-items: center; gap: 9px; width: 100%; box-sizing: border-box; padding: 11px 14px; cursor: pointer; font-family: inherit; font-size: 14.5px; font-weight: 600; color: var(--ink); text-align: right; text-decoration: none; }
+.suggest a:hover { background: var(--surface-2); }
 .suggest .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); }
 
 /* ---------- גוף: side panel + map ---------- */
@@ -782,6 +785,8 @@ body.col-resizing iframe, body.col-resizing .map-wrap { pointer-events: none; }
   padding: 9px 8px; font-family: "Heebo", sans-serif; font-size: 14px; font-weight: 700; cursor: pointer;
   transition: background .12s;
 }
+a.country-tab { display: block; text-align: center; text-decoration: none; }
+.country-table a.row-link { color: inherit; text-decoration: none; }
 .country-tab + .country-tab { border-inline-start: 1px solid var(--line-strong); }
 .country-tab:hover { background: var(--line); }
 .country-tab.on { background: var(--brand); color: #fff; }

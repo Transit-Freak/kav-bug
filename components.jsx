@@ -415,10 +415,11 @@ function TopBar({ query, setQuery, onSelect, cityNames, onUpload, onInfo, onRepo
           <div className="suggest">
             {/* ראשי: כל עיר ישר מהדוח הארצי — בלי העלאה */}
             {q && onCountry && (
-              <button className="suggest-country" onClick={() => { setOpen(false); onCountry(q); }}>
+              <a className="suggest-country" href={/^(כל ?הארץ|הארץ|הכל)$/.test(q) ? homeHref() : "#עיר/" + encodeURIComponent(q)}
+                onClick={(e) => { if (!plainClick(e)) return; setOpen(false); onCountry(q); }}>
                 <span className="plus">🌍</span>
                 <span>הצג עיקופים ב“{q}” — מיד מהדוח הארצי, בלי להעלות קובץ</span>
-              </button>
+              </a>
             )}
             {/* ערים-הדגמה מובְנות (דמו) */}
             {matches.map((c) => (
@@ -537,6 +538,15 @@ function countryHashTab() {
   try { const h = decodeURIComponent((window.location.hash || "").slice(1)); return h === "nav" || h === "gps" ? h : "lines"; } catch (e) { return "lines"; }
 }
 function isNavHash() { return countryHashTab() === "nav"; }
+// לשוניות, שורות וחיפוש-עיר הם קישורים אמיתיים (נפתחים בלשונית חדשה ב-Ctrl/גלגלת/לחיצה ארוכה).
+// לחיצה רגילה נשארת בתוך הדף: plainClick(e) — האם לטפל בלחיצה כאן ולבטל את הניווט
+function plainClick(e) {
+  if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return false;
+  e.preventDefault(); return true;
+}
+const homeHref = () => window.location.pathname + window.location.search;
+// אותו מבנה כמו קישור השיתוף 🔗 (‎#עיקוף/קו~מפעיל~מ~עד‎), שנקרא בטעינה
+const issueHref = (i) => "#עיקוף/" + [i.line, i.operator, i.from, i.to].map(encodeURIComponent).join("~");
 // שתי ההכרעות של בדיקת ה-GPS
 const GPS_CODING = "חשד לקידוד מיותר", GPS_WORKS = "כנראה עבודות תשתית";
 function CountryModal({ open, onClose, onPick, initialCity, inline }) {
@@ -721,15 +731,15 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
         {data && (
           <>
             <div className="country-tabs" role="tablist" aria-label="סוג הבדיקה">
-              <button role="tab" aria-selected={tab === "lines"} className={"country-tab" + (tab === "lines" ? " on" : "")} onClick={() => setTab("lines")}>
+              <a role="tab" aria-selected={tab === "lines"} className={"country-tab" + (tab === "lines" ? " on" : "")} href={homeHref()} onClick={(e) => { if (plainClick(e)) setTab("lines"); }}>
                 🚌 השוואה לקווים אחרים <span className="chip-n">{allIssues.length - navCount}</span>
-              </button>
-              <button role="tab" aria-selected={isNav} className={"country-tab" + (isNav ? " on" : "")} onClick={() => setTab("nav")}>
+              </a>
+              <a role="tab" aria-selected={isNav} className={"country-tab" + (isNav ? " on" : "")} href="#nav" onClick={(e) => { if (plainClick(e)) setTab("nav"); }}>
                 🚗 השוואה לניווט ברכב <span className="chip-n">{navVerified ? navCount : "לא הושלמה"}</span>
-              </button>
-              <button role="tab" aria-selected={isGps} className={"country-tab" + (isGps ? " on" : "")} onClick={() => setTab("gps")}>
+              </a>
+              <a role="tab" aria-selected={isGps} className={"country-tab" + (isGps ? " on" : "")} href="#gps" onClick={(e) => { if (plainClick(e)) setTab("gps"); }}>
                 🛰️ לפי GPS בפועל <span className="chip-n">{gpsIssues.length}</span>
-              </button>
+              </a>
             </div>
             {isGps ? (
             <p className="modal-hint">
@@ -812,12 +822,16 @@ function CountryModal({ open, onClose, onPick, initialCity, inline }) {
                     const hasGeo = i.hasGeo != null ? i.hasGeo : ((i.seg && i.seg.length > 1) || (i.refGeom && i.refGeom.length > 1));
                     return (
                       <tr key={k} className={onPick && hasGeo ? "clickable" : ""}
-                        onClick={onPick && hasGeo ? () => { withGeo(i).then(onPick); } : undefined}
+                        onClick={onPick && hasGeo ? (e) => {
+                          // Ctrl/גלגלת על מספר הקו (קישור) — לשונית חדשה; לחיצה רגילה — מציגים כאן
+                          if (e.target.closest && e.target.closest("a[href]")) { if (!plainClick(e)) return; }
+                          withGeo(i).then(onPick);
+                        } : undefined}
                         tabIndex={onPick && hasGeo ? 0 : undefined}
                         onKeyDown={onPick && hasGeo ? ((e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); withGeo(i).then(onPick); } }) : undefined}
                         aria-label={onPick && hasGeo ? ("הצגת קו " + i.line + " " + i.from + " עד " + i.to + " על המפה") : undefined}
                         title={onPick && hasGeo ? "הצג על המפה" : ""}>
-                        <td className="num">{i.line}{i.rd ? <div className="line-mkt" title="מק״ט — מספר הרישוי של הקו במשרד התחבורה">{String(i.rd).split("-")[0].replace(/^0+/, "")}</div> : null}</td>
+                        <td className="num">{onPick && hasGeo ? <a className="row-link" href={issueHref(i)} tabIndex={-1}>{i.line}</a> : i.line}{i.rd ? <div className="line-mkt" title="מק״ט — מספר הרישוי של הקו במשרד התחבורה">{String(i.rd).split("-")[0].replace(/^0+/, "")}</div> : null}</td>
                         <td>{i.operator}</td>
                         <td className="seg">{i.rd || i.dir ? <div className="seg-dir" title="כיוון הנסיעה של הקו שבו נמצא המקטע">🧭 {i.rd ? fmtRd(i.rd) : null}{i.rd && i.dir ? <> · </> : null}{i.dir ? fmtDir(i.dir) : null}</div> : null}{i.from} → {i.to}{i.city ? <span className="seg-city" title="העיר של המקטע השגוי"> · 📍 {i.city}</span> : null}{onPick && hasGeo ? <span className="map-ico"> 🗺️</span> : null}
                           {isNav && i.optKm != null ? <div className="nav-km">האוטובוס {fmt(i.optKm + (i.excessKm || 0))} ק"מ · הדרך הקצרה ברכב {fmt(i.optKm)} ק"מ</div> : null}
